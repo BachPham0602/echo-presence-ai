@@ -27,8 +27,7 @@ export function useVoiceState(): VoiceState {
     if (typeof navigator === "undefined" || !navigator.permissions) return;
     let cancelled = false;
     navigator.permissions
-      // @ts-expect-error — "microphone" not in all TS lib versions
-      .query({ name: "microphone" })
+      .query({ name: "microphone" as PermissionName })
       .then((status: PermissionStatus) => {
         if (cancelled) return;
         setPermission(status.state as MicPermission);
