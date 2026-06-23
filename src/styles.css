@@ -63,38 +63,54 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  /* Warm, cozy "candlelight" palette — Lumi means light/lumière */
+  --background: oklch(0.97 0.02 75);
+  --foreground: oklch(0.28 0.04 35);
+  --card: oklch(0.98 0.015 75);
+  --card-foreground: oklch(0.28 0.04 35);
+  --popover: oklch(0.98 0.015 75);
+  --popover-foreground: oklch(0.28 0.04 35);
+  --primary: oklch(0.72 0.15 45);
+  --primary-foreground: oklch(0.99 0.01 80);
+  --primary-glow: oklch(0.86 0.13 75);
+  --secondary: oklch(0.93 0.04 65);
+  --secondary-foreground: oklch(0.32 0.05 35);
+  --muted: oklch(0.93 0.03 70);
+  --muted-foreground: oklch(0.48 0.04 45);
+  --accent: oklch(0.88 0.09 55);
+  --accent-foreground: oklch(0.28 0.05 35);
+  --destructive: oklch(0.6 0.22 30);
+  --destructive-foreground: oklch(0.99 0.01 80);
+  --border: oklch(0.85 0.04 65 / 50%);
+  --input: oklch(0.9 0.03 70);
+  --ring: oklch(0.78 0.12 55);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  --sidebar: oklch(0.96 0.02 70);
+  --sidebar-foreground: oklch(0.28 0.04 35);
+  --sidebar-primary: oklch(0.72 0.15 45);
+  --sidebar-primary-foreground: oklch(0.99 0.01 80);
+  --sidebar-accent: oklch(0.9 0.05 65);
+  --sidebar-accent-foreground: oklch(0.28 0.05 35);
+  --sidebar-border: oklch(0.85 0.04 65 / 50%);
+  --sidebar-ring: oklch(0.78 0.12 55);
+
+  /* Lumi-specific gradients */
+  --gradient-ambient: radial-gradient(
+    ellipse at 50% 30%,
+    oklch(0.95 0.05 75) 0%,
+    oklch(0.9 0.06 55) 45%,
+    oklch(0.78 0.08 35) 100%
+  );
+  --gradient-night: radial-gradient(
+    ellipse at 50% 30%,
+    oklch(0.4 0.06 50) 0%,
+    oklch(0.25 0.05 40) 55%,
+    oklch(0.16 0.04 35) 100%
+  );
 }
 
 .dark {
@@ -138,7 +154,73 @@
   }
 
   body {
-    background-color: var(--color-background);
+    background: var(--gradient-ambient);
+    background-attachment: fixed;
     color: var(--color-foreground);
+    overflow: hidden;
+  }
+}
+
+@theme inline {
+  --color-primary-glow: var(--primary-glow);
+}
+
+/* Lumi atmosphere utilities */
+@utility glass-pill {
+  background: oklch(1 0 0 / 0.45);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid oklch(1 0 0 / 0.5);
+  border-radius: 999px;
+  box-shadow: 0 8px 30px -12px oklch(0.5 0.1 40 / 0.25);
+}
+
+@utility glass-bubble {
+  background: oklch(1 0 0 / 0.55);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid oklch(1 0 0 / 0.45);
+  border-radius: 1.25rem;
+  padding: 0.65rem 1rem;
+  box-shadow: 0 10px 30px -16px oklch(0.5 0.1 40 / 0.3);
+}
+
+@utility glass-panel {
+  background: oklch(1 0 0 / 0.55);
+  backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid oklch(1 0 0 / 0.5);
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 60px -25px oklch(0.4 0.1 40 / 0.35);
+}
+
+@utility glass-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: oklch(1 0 0 / 0.5);
+  color: var(--color-foreground);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid oklch(1 0 0 / 0.5);
+  box-shadow: 0 8px 30px -14px oklch(0.5 0.1 40 / 0.3);
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease;
+}
+@utility glass-button {
+  &:hover {
+    transform: translateY(-1px);
+    background: oklch(1 0 0 / 0.65);
+  }
+}
+
+@utility lumi-breathe {
+  animation: lumi-breathe 5s ease-in-out infinite;
+}
+
+@keyframes lumi-breathe {
+  0%, 100% {
+    transform: scale(1) translateY(0);
+  }
+  50% {
+    transform: scale(1.025) translateY(-4px);
   }
 }
