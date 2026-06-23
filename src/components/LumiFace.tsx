@@ -56,23 +56,25 @@ export function LumiFace({ expression }: LumiFaceProps) {
   const brows = browPathsFor(expression);
   const showAnger = expression !== "happy" && expression !== "excited";
 
-  // SVG canvas — wide so the features can spread out like the reference.
-  // viewBox: 800 x 600. Eyes centered around y=290, large.
+  // Full-screen wallpaper face. viewBox is tall so the eyes sit in the upper
+  // third and the mouth stays around 55% of the height — always above the
+  // chat composer fixed at the bottom of the viewport.
   return (
-    <div className="relative flex h-full w-full items-center justify-center">
+    <div className="absolute inset-0 h-full w-full">
       {/* Soft ambient halo behind the face */}
       <div
-        className="pointer-events-none absolute inset-0 -z-10"
+        className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 50%, oklch(0.4 0.18 250 / 0.3), transparent 75%)",
+            "radial-gradient(ellipse 70% 55% at 50% 38%, oklch(0.45 0.18 250 / 0.45), transparent 70%)",
         }}
         aria-hidden
       />
-      <div className="lumi-breathe relative w-full">
+      <div className="lumi-breathe absolute inset-0">
         <svg
-          viewBox="0 0 800 600"
-          className="mx-auto block h-[94vh] w-full max-w-[1300px] drop-shadow-[0_30px_90px_rgba(80,140,255,0.45)]"
+          viewBox="0 0 800 1000"
+          preserveAspectRatio="xMidYMid slice"
+          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(80,140,255,0.35)]"
           role="img"
           aria-label={`Lumi — ${expression}`}
         >
@@ -102,10 +104,10 @@ export function LumiFace({ expression }: LumiFaceProps) {
 
             {/* Eye shape clipping paths for glossy highlight inside the eye */}
             <clipPath id="eye-clip-left">
-              <path d={eyePath(260, 290, eyeShape)} />
+              <path d={eyePath(250, 360, eyeShape)} />
             </clipPath>
             <clipPath id="eye-clip-right">
-              <path d={eyePath(540, 290, eyeShape)} />
+              <path d={eyePath(550, 360, eyeShape)} />
             </clipPath>
           </defs>
 
@@ -116,8 +118,8 @@ export function LumiFace({ expression }: LumiFaceProps) {
               transition: "transform 1.2s cubic-bezier(0.4, 0, 0.2, 1)",
             }}
           >
-            <Eye cx={260} cy={290} shape={eyeShape} side="left" />
-            <Eye cx={540} cy={290} shape={eyeShape} side="right" />
+            <Eye cx={250} cy={360} shape={eyeShape} side="left" />
+            <Eye cx={550} cy={360} shape={eyeShape} side="right" />
           </g>
 
           {/* ===== EYEBROWS ===== */}
@@ -126,7 +128,7 @@ export function LumiFace({ expression }: LumiFaceProps) {
               key={i}
               d={b}
               stroke="oklch(0.97 0.02 240)"
-              strokeWidth={9}
+              strokeWidth={11}
               strokeLinecap="round"
               fill="none"
               filter="url(#outline-glow)"
@@ -138,14 +140,14 @@ export function LumiFace({ expression }: LumiFaceProps) {
           <path
             d={mouth}
             stroke="oklch(0.97 0.02 240)"
-            strokeWidth={12}
+            strokeWidth={14}
             strokeLinecap="round"
             fill="none"
             filter="url(#outline-glow)"
           />
 
           {/* ===== ANGER / EMOTION MARK ===== */}
-          {showAnger && <AngerMark x={680} y={140} scale={1.6} />}
+          {showAnger && <AngerMark x={690} y={210} scale={1.8} />}
         </svg>
       </div>
     </div>
