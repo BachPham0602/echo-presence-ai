@@ -281,49 +281,48 @@ function eyeShapeFor(expression: LumiExpression, blink: boolean): EyeShape {
  * slope inward (concerned/angry). Other expressions use softer curves.
  */
 function browPathsFor(expression: LumiExpression): [string, string] {
-  // baseline y for brows (just above the eyes)
+  // baseline y for brows (just above the eyes at y=360)
   switch (expression) {
     case "concerned":
     case "sad":
-      // inner ends raised → worried look
-      return ["M 180 165 Q 260 130 330 160", "M 470 160 Q 540 130 620 165"];
+      return ["M 170 235 Q 250 200 330 230", "M 470 230 Q 550 200 630 235"];
     case "confused":
-      return ["M 180 160 Q 260 140 330 170", "M 470 170 Q 540 140 620 160"];
+      return ["M 170 230 Q 250 210 330 240", "M 470 240 Q 550 210 630 230"];
     case "happy":
     case "excited":
-      return ["M 185 170 Q 260 140 325 170", "M 475 170 Q 540 140 615 170"];
+      return ["M 175 240 Q 250 210 325 240", "M 475 240 Q 550 210 625 240"];
     case "thinking":
-      return ["M 185 170 Q 260 155 325 168", "M 475 168 Q 540 155 615 170"];
+      return ["M 175 240 Q 250 225 325 238", "M 475 238 Q 550 225 625 240"];
     case "sleepy":
-      return ["M 185 185 Q 260 178 325 185", "M 475 185 Q 540 178 615 185"];
+      return ["M 175 255 Q 250 248 325 255", "M 475 255 Q 550 248 625 255"];
     default:
-      return ["M 180 165 Q 260 135 330 162", "M 470 162 Q 540 135 620 165"];
+      return ["M 170 235 Q 250 205 330 232", "M 470 232 Q 550 205 630 235"];
   }
 }
 
 function mouthPathFor(expression: LumiExpression): string {
-  // Mouth centered around (400, 470)
+  // Mouth centered around (400, 540) — keeps it above the bottom composer.
   switch (expression) {
     case "happy":
-      return "M 350 460 Q 400 510 450 460";
+      return "M 340 530 Q 400 590 460 530";
     case "excited":
-      return "M 340 455 Q 400 520 460 455";
+      return "M 330 525 Q 400 600 470 525";
     case "sad":
-      return "M 350 485 Q 400 445 450 485";
+      return "M 340 560 Q 400 510 460 560";
     case "concerned":
-      return "M 365 470 Q 400 498 435 470";
+      return "M 355 540 Q 400 575 445 540";
     case "speaking":
-      return "M 365 465 Q 400 490 435 465 Q 400 455 365 465 Z";
+      return "M 355 535 Q 400 570 445 535 Q 400 520 355 535 Z";
     case "thinking":
-      return "M 370 470 Q 400 465 430 470";
+      return "M 360 540 Q 400 535 440 540";
     case "sleepy":
-      return "M 370 470 Q 400 478 430 470";
+      return "M 360 540 Q 400 552 440 540";
     case "confused":
-      return "M 365 472 Q 385 462 405 478 Q 420 466 435 470";
+      return "M 355 545 Q 380 530 405 555 Q 425 540 445 545";
     case "listening":
-      return "M 365 468 Q 400 478 435 468";
+      return "M 355 540 Q 400 552 445 540";
     default:
-      return "M 365 470 Q 400 495 435 470";
+      return "M 355 540 Q 400 568 445 540";
   }
 }
 
