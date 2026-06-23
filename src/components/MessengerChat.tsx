@@ -28,18 +28,23 @@ export function MessengerChat({ messages, interimTranscript, listening }: Messen
     rightRef.current?.scrollTo({ top: rightRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, interimTranscript]);
 
+  const fadeMask =
+    "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.2) 12%, rgba(0,0,0,0.85) 28%, #000 45%, #000 100%)";
+  const columnStyle = {
+    bottom: "120px",
+    maxHeight: "65vh",
+    width: "min(70vw, 720px)",
+    WebkitMaskImage: fadeMask,
+    maskImage: fadeMask,
+  } as const;
+
   return (
     <>
       {/* Lumi column — left edge */}
       <div
         ref={leftRef}
-        className="scrollbar-hide pointer-events-auto absolute z-10 flex flex-col gap-2 overflow-y-auto"
-        style={{
-          left: "16px",
-          bottom: "120px",
-          maxHeight: "55vh",
-          width: "min(40vw, 360px)",
-        }}
+        className="scrollbar-hide pointer-events-auto absolute left-3 z-10 flex flex-col gap-2 overflow-y-auto pt-12"
+        style={columnStyle}
       >
         {lumiMessages.map((m) => (
           <Bubble key={m.id} role="lumi" content={m.content} />
@@ -49,13 +54,8 @@ export function MessengerChat({ messages, interimTranscript, listening }: Messen
       {/* User column — right edge */}
       <div
         ref={rightRef}
-        className="scrollbar-hide pointer-events-auto absolute z-10 flex flex-col items-end gap-2 overflow-y-auto"
-        style={{
-          right: "16px",
-          bottom: "120px",
-          maxHeight: "55vh",
-          width: "min(40vw, 360px)",
-        }}
+        className="scrollbar-hide pointer-events-auto absolute right-3 z-10 flex flex-col items-end gap-2 overflow-y-auto pt-12"
+        style={columnStyle}
       >
         {userMessages.map((m) => (
           <Bubble key={m.id} role="user" content={m.content} />
@@ -79,7 +79,7 @@ function Bubble({
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[78%] rounded-3xl px-4 py-2.5 text-sm leading-relaxed shadow-[0_8px_28px_-16px_rgba(0,20,60,0.6)] backdrop-blur-xl ${
+        className={`max-w-[85vw] rounded-3xl px-5 py-3 text-sm leading-relaxed shadow-[0_8px_28px_-16px_rgba(0,20,60,0.6)] backdrop-blur-xl sm:max-w-[70vw] md:max-w-[60vw] ${
           isUser
             ? "bg-primary/55 text-primary-foreground rounded-br-md border border-primary/40"
             : "bg-white/10 text-foreground rounded-bl-md border border-white/15"

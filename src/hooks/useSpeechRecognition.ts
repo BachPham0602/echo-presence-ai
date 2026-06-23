@@ -61,6 +61,18 @@ export function useSpeechRecognition({
   const shouldRestartRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interimBufferRef = useRef("");
+  const lastFinalRef = useRef("");
+
+  const emitFinal = (text: string) => {
+    const cleaned = text.trim().replace(/\s+/g, " ");
+    if (!cleaned) return;
+    if (cleaned.toLowerCase() === lastFinalRef.current.toLowerCase()) {
+      console.log("[Lumi STT] dedup, skipping:", cleaned);
+      return;
+    }
+    lastFinalRef.current = cleaned;
+    onFinalRef.current(cleaned);
+  };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SpeechRecognitionCtor: any =
@@ -87,30 +99,37 @@ export function useSpeechRecognition({
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
+      // Build interim/final from ALL results in this event so we never
+      // double-count across onresult firings.
       let interim = "";
       let final = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         const r = event.results[i];
         const text = r[0]?.transcript ?? "";
-        if (r.isFinal) final += text;
-        else interim += text;
+        if (r.isFinal) final += text + " ";
+        else interim += text + " ";
       }
 
-      if (final.trim()) {
-        console.log("[Lumi STT] final:", final);
-        setStatus("speech_detected");
+      const finalTrim = final.trim();
+      const interimTrim = interim.trim();
+
+      if (finalTrim) {
+        console.log("[Lumi STT] final:", finalTrim);
+        clearSilenceTimer();
         interimBufferRef.current = "";
         onInterimRef.current?.("");
-        onFinalRef.current(final.trim());
+        setStatus("speech_detected");
+        emitFinal(finalTrim);
         setStatus("listening");
-      } else if (interim.trim()) {
-        const combined = (interimBufferRef.current + " " + interim).trim();
-        interimBufferRef.current = combined;
-        onInterimRef.current?.(combined);
-        setStatus("listening");
-        console.log("[Lumi STT] interim:", combined);
+        return;
+      }
 
-        // Soft auto-commit if interim sits without becoming final.
+      if (interimTrim) {
+        interimBufferRef.current = interimTrim;
+        onInterimRef.current?.(interimTrim);
+        setStatus("listening");
+
+        // Soft auto-commit only if interim text doesn't change for a while.
         clearSilenceTimer();
         silenceTimerRef.current = setTimeout(() => {
           const pending = interimBufferRef.current.trim();
@@ -118,7 +137,7 @@ export function useSpeechRecognition({
             console.log("[Lumi STT] silence-commit:", pending);
             interimBufferRef.current = "";
             onInterimRef.current?.("");
-            onFinalRef.current(pending);
+            emitFinal(pending);
           }
         }, 1800);
       }
@@ -155,7 +174,7 @@ export function useSpeechRecognition({
       if (pending) {
         interimBufferRef.current = "";
         onInterimRef.current?.("");
-        onFinalRef.current(pending);
+        emitFinal(pending);
       }
       if (shouldRestartRef.current) {
         try {
