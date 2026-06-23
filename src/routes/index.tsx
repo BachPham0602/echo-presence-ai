@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Menu } from "lucide-react";
 
 import { LumiFace } from "@/components/LumiFace";
@@ -9,7 +9,7 @@ import { StatusIndicator } from "@/components/StatusIndicator";
 import { EmotionIndicator } from "@/components/EmotionIndicator";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { useLumiPipeline } from "@/hooks/useLumiPipeline";
-import { useVoiceState } from "@/hooks/useVoiceState";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useConversations } from "@/store/conversations";
 
 export const Route = createFileRoute("/")({
@@ -36,32 +36,33 @@ function LumiHome() {
   const pipeline = useLumiPipeline({
     onMessage: (m) => conversations.appendMessage(m),
   });
-  const voice = useVoiceState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Reflect mic permission + mute into pipeline state
-  useEffect(() => {
-    if (voice.isMuted) {
-      pipeline.setMuted(true);
-      return;
-    }
-    pipeline.setMuted(false);
-    if (voice.permission === "granted" && voice.isListening && pipeline.snapshot.state === "idle") {
-      pipeline.setListening(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voice.isMuted, voice.permission, voice.isListening, pipeline.snapshot.state]);
+  const handleFinal = useCallback(
+    (text: string) => {
+      void pipeline.sendText(text);
+    },
+    [pipeline],
+  );
+  const handleInterim = useCallback(
+    (text: string) => {
+      pipeline.setInterimTranscript(text);
+    },
+    [pipeline],
+  );
 
-  const isListening = pipeline.snapshot.state === "listening";
-  const micActive = voice.isListening && voice.permission === "granted" && !voice.isMuted;
+  const stt = useSpeechRecognition({
+    lang: "vi-VN",
+    onFinal: handleFinal,
+    onInterim: handleInterim,
+  });
 
-  const handleToggleMic = async () => {
-    if (voice.permission !== "granted") {
-      await voice.requestMic();
-      return;
-    }
-    voice.toggleMute();
-  };
+  const handleToggleMic = useCallback(async () => {
+    if (stt.isListening) stt.stop();
+    else await stt.start();
+  }, [stt]);
+
+  const statusLabel = recognitionStatusLabel(stt.status);
 
   return (
     <main className="relative h-screen w-screen overflow-hidden">
@@ -115,15 +116,20 @@ function LumiHome() {
       />
 
       {/* Floating status above the composer */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center">
+      <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex flex-col items-center gap-1.5">
         <StatusIndicator state={pipeline.snapshot.state} />
+        {statusLabel && (
+          <span className="glass-pill px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-foreground/75">
+            {statusLabel}
+          </span>
+        )}
       </div>
 
       {/* Error / hint pill */}
-      {pipeline.snapshot.error && (
+      {(stt.error || pipeline.snapshot.error) && (
         <div className="pointer-events-none absolute inset-x-0 bottom-20 z-20 flex justify-center px-6">
           <p className="glass-pill px-4 py-1.5 text-xs text-foreground/85">
-            {pipeline.snapshot.error}
+            {stt.error ?? pipeline.snapshot.error}
           </p>
         </div>
       )}
@@ -131,11 +137,38 @@ function LumiHome() {
       {/* Bottom composer — always visible */}
       <ChatComposer
         onSend={(t) => void pipeline.sendText(t)}
-        micActive={micActive}
-        muted={voice.isMuted || voice.permission !== "granted"}
+        micActive={stt.isListening}
+        muted={!stt.isListening}
         onToggleMic={() => void handleToggleMic()}
-        listening={isListening}
+        listening={stt.isListening}
       />
     </main>
   );
+}
+
+function recognitionStatusLabel(
+  status: ReturnType<typeof useSpeechRecognition>["status"],
+): string | null {
+  switch (status) {
+    case "checking_permissions":
+      return "Đang xin quyền micro…";
+    case "starting":
+      return "Đang khởi động…";
+    case "listening":
+      return "Đang nghe…";
+    case "speech_detected":
+      return "Đã nghe thấy bạn";
+    case "processing":
+      return "Đang xử lý…";
+    case "no_speech":
+      return "Chưa nghe rõ";
+    case "denied":
+      return "Micro bị chặn";
+    case "unsupported":
+      return "Trình duyệt chưa hỗ trợ";
+    case "failed":
+      return "Không kết nối được micro";
+    default:
+      return null;
+  }
 }
