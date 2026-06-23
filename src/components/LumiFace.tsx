@@ -6,12 +6,14 @@ interface LumiFaceProps {
 }
 
 /**
- * Lumi's face. A soft glowing orb with eyes + mouth rendered in SVG.
+ * Lumi's face — a bodyless, anime-style emotional companion.
  *
- * Animations: breathing (scale), blinking (eye lid), gentle eye drift,
- * and per-expression mouth + eye shape.
+ * Only the features float in the dark blue void: two large glossy eyes with a
+ * glowing outline, curved brows, a small expressive mouth, and emotion marks
+ * (anger / sweat / sparkle). No mascot body. No avatar circle.
  *
- * Future work: richer expressions, micro-gestures, optional camera reaction.
+ * Animations: breathing scale, idle blink, slow gaze drift, per-expression
+ * brows / eye shape / mouth / accent.
  */
 export function LumiFace({ expression }: LumiFaceProps) {
   const [blink, setBlink] = useState(false);
@@ -37,8 +39,8 @@ export function LumiFace({ expression }: LumiFaceProps) {
     const drift = () => {
       if (cancelled) return;
       setGaze({
-        x: (Math.random() - 0.5) * 6,
-        y: (Math.random() - 0.5) * 4,
+        x: (Math.random() - 0.5) * 10,
+        y: (Math.random() - 0.5) * 6,
       });
       window.setTimeout(drift, 2400 + Math.random() * 2200);
     };
@@ -51,109 +53,247 @@ export function LumiFace({ expression }: LumiFaceProps) {
 
   const eyeShape = eyeShapeFor(expression, blink);
   const mouth = mouthPathFor(expression);
-  const auraClass = auraClassFor(expression);
+  const brows = browPathsFor(expression);
+  const showAnger =
+    expression === "concerned" ||
+    expression === "sad" ||
+    expression === "confused";
 
+  // SVG canvas — wide so the features can spread out like the reference.
+  // viewBox: 800 x 600. Eyes centered around y=290, large.
   return (
-    <div className="relative flex items-center justify-center">
-      {/* Outer aura halos */}
-      <div className={`absolute inset-0 -z-10 ${auraClass}`} aria-hidden />
-      <div className="lumi-breathe relative">
+    <div className="relative flex h-full w-full items-center justify-center">
+      {/* Soft ambient halo behind the face */}
+      <div
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 50% at 50% 45%, oklch(0.55 0.22 250 / 0.45), transparent 70%)",
+        }}
+        aria-hidden
+      />
+      <div className="lumi-breathe relative w-full">
         <svg
-          viewBox="0 0 320 320"
-          className="h-[68vmin] w-[68vmin] max-h-[640px] max-w-[640px] drop-shadow-[0_30px_80px_rgba(80,120,255,0.4)]"
+          viewBox="0 0 800 600"
+          className="mx-auto block h-[88vh] w-full max-w-[1100px] drop-shadow-[0_30px_90px_rgba(80,140,255,0.45)]"
           role="img"
-          aria-label={`Lumi face — ${expression}`}
+          aria-label={`Lumi — ${expression}`}
         >
           <defs>
-            <radialGradient id="lumi-body" cx="50%" cy="42%" r="62%">
-              <stop offset="0%" stopColor="oklch(0.85 0.13 245)" />
-              <stop offset="55%" stopColor="oklch(0.62 0.18 255)" />
-              <stop offset="100%" stopColor="oklch(0.32 0.14 260)" />
+            {/* Glossy eye gradient — soft blue version of the reference */}
+            <radialGradient id="eye-fill" cx="50%" cy="35%" r="80%">
+              <stop offset="0%" stopColor="oklch(0.55 0.14 250)" />
+              <stop offset="55%" stopColor="oklch(0.3 0.1 255)" />
+              <stop offset="100%" stopColor="oklch(0.16 0.07 260)" />
             </radialGradient>
-            <radialGradient id="lumi-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="oklch(0.8 0.18 250 / 0.7)" />
-              <stop offset="100%" stopColor="oklch(0.8 0.18 250 / 0)" />
+            {/* Bottom inner glow — mimics the bright lower rim in the ref */}
+            <radialGradient id="eye-rim" cx="50%" cy="100%" r="65%">
+              <stop offset="0%" stopColor="oklch(0.9 0.08 240 / 0.55)" />
+              <stop offset="60%" stopColor="oklch(0.9 0.08 240 / 0)" />
             </radialGradient>
-            <filter id="lumi-soft" x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="2" />
+            {/* Outline glow filter */}
+            <filter
+              id="outline-glow"
+              x="-30%"
+              y="-30%"
+              width="160%"
+              height="160%"
+            >
+              <feGaussianBlur stdDeviation="3" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
             </filter>
+            <filter id="strong-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="6" />
+            </filter>
+
+            {/* Eye shape clipping paths for glossy highlight inside the eye */}
+            <clipPath id="eye-clip-left">
+              <path d={eyePath(260, 290, eyeShape)} />
+            </clipPath>
+            <clipPath id="eye-clip-right">
+              <path d={eyePath(540, 290, eyeShape)} />
+            </clipPath>
           </defs>
 
-          <circle cx="160" cy="160" r="150" fill="url(#lumi-glow)" />
-          <circle cx="160" cy="160" r="118" fill="url(#lumi-body)" />
+          {/* ===== EYES ===== */}
+          <g
+            transform={`translate(${gaze.x}, ${gaze.y})`}
+            style={{
+              transition: "transform 1.2s cubic-bezier(0.4, 0, 0.2, 1)",
+            }}
+          >
+            {/* outer soft glow under each eye */}
+            <ellipse
+              cx={260}
+              cy={310}
+              rx={140}
+              ry={150}
+              fill="oklch(0.7 0.18 250 / 0.18)"
+              filter="url(#strong-glow)"
+            />
+            <ellipse
+              cx={540}
+              cy={310}
+              rx={140}
+              ry={150}
+              fill="oklch(0.7 0.18 250 / 0.18)"
+              filter="url(#strong-glow)"
+            />
 
-          {/* highlight */}
-          <ellipse
-            cx="120"
-            cy="110"
-            rx="36"
-            ry="20"
-            fill="oklch(1 0 0 / 0.18)"
-            filter="url(#lumi-soft)"
-          />
-
-          {/* eyes */}
-          <g transform={`translate(${gaze.x}, ${gaze.y})`}>
-            <Eye cx={128} cy={160} shape={eyeShape} />
-            <Eye cx={192} cy={160} shape={eyeShape} />
+            <Eye cx={260} cy={290} shape={eyeShape} side="left" />
+            <Eye cx={540} cy={290} shape={eyeShape} side="right" />
           </g>
 
-          {/* mouth */}
+          {/* ===== EYEBROWS ===== */}
+          {brows.map((b, i) => (
+            <path
+              key={i}
+              d={b}
+              stroke="oklch(0.97 0.02 240)"
+              strokeWidth={9}
+              strokeLinecap="round"
+              fill="none"
+              filter="url(#outline-glow)"
+              style={{ transition: "d 0.4s ease" }}
+            />
+          ))}
+
+          {/* ===== MOUTH ===== */}
           <path
             d={mouth}
-            stroke="oklch(0.96 0.04 240)"
-            strokeWidth="5"
+            stroke="oklch(0.97 0.02 240)"
+            strokeWidth={12}
             strokeLinecap="round"
             fill="none"
+            filter="url(#outline-glow)"
           />
+
+          {/* ===== ANGER / EMOTION MARK ===== */}
+          {showAnger && <AngerMark x={690} y={120} />}
         </svg>
       </div>
     </div>
   );
 }
 
+/* ============================================================
+ * EYES
+ * ============================================================ */
+
 type EyeShape = "open" | "closed" | "soft" | "wide" | "squint" | "down";
 
-function Eye({ cx, cy, shape }: { cx: number; cy: number; shape: EyeShape }) {
+/** Returns the rounded "fishbowl"-style eye outline path used in the reference. */
+function eyePath(cx: number, cy: number, shape: EyeShape): string {
+  // base sizes
+  const w = shape === "wide" ? 130 : 120;
+  const h = shape === "wide" ? 150 : shape === "soft" ? 130 : 140;
+  const top = cy - h / 2;
+  const bottom = cy + h / 2;
+  const left = cx - w / 2;
+  const right = cx + w / 2;
+  // rounded bowl: flat-ish top corners, very round bottom
+  return [
+    `M ${left} ${top + 18}`,
+    `Q ${left} ${top} ${left + 24} ${top}`,
+    `L ${right - 24} ${top}`,
+    `Q ${right} ${top} ${right} ${top + 18}`,
+    `L ${right} ${cy + 10}`,
+    `Q ${right} ${bottom} ${cx} ${bottom}`,
+    `Q ${left} ${bottom} ${left} ${cy + 10}`,
+    "Z",
+  ].join(" ");
+}
+
+function Eye({
+  cx,
+  cy,
+  shape,
+  side,
+}: {
+  cx: number;
+  cy: number;
+  shape: EyeShape;
+  side: "left" | "right";
+}) {
+  // Closed / squint — just a curved arc, no body
   if (shape === "closed") {
     return (
       <path
-        d={`M ${cx - 12} ${cy} q 12 8 24 0`}
-        stroke="oklch(0.96 0.04 240)"
-        strokeWidth="4"
+        d={`M ${cx - 60} ${cy} q 60 38 120 0`}
+        stroke="oklch(0.97 0.02 240)"
+        strokeWidth={10}
         strokeLinecap="round"
         fill="none"
+        filter="url(#outline-glow)"
       />
     );
   }
   if (shape === "squint") {
     return (
       <path
-        d={`M ${cx - 14} ${cy + 2} q 14 -10 28 0`}
-        stroke="oklch(0.96 0.04 240)"
-        strokeWidth="4"
+        d={`M ${cx - 60} ${cy + 8} q 60 -40 120 0`}
+        stroke="oklch(0.97 0.02 240)"
+        strokeWidth={10}
         strokeLinecap="round"
         fill="none"
+        filter="url(#outline-glow)"
       />
     );
   }
-  const rx = shape === "wide" ? 9 : shape === "soft" ? 7 : 7;
-  const ry =
-    shape === "wide" ? 11 : shape === "soft" ? 8 : shape === "down" ? 9 : 9;
-  const offsetY = shape === "down" ? 3 : 0;
+
+  const path = eyePath(cx, cy, shape);
+  // pupil highlight position depends on side and gaze
+  const pupilCx = side === "left" ? cx - 22 : cx + 22;
+  const pupilCy = cy - 32;
+  const clipId = side === "left" ? "eye-clip-left" : "eye-clip-right";
+
   return (
     <g>
-      <ellipse
-        cx={cx}
-        cy={cy + offsetY}
-        rx={rx}
-        ry={ry}
-        fill="oklch(0.98 0.02 240)"
+      {/* glowing white outline */}
+      <path
+        d={path}
+        fill="url(#eye-fill)"
+        stroke="oklch(1 0 0)"
+        strokeWidth={5}
+        filter="url(#outline-glow)"
       />
-      <circle cx={cx + 2} cy={cy - 2 + offsetY} r={2.2} fill="oklch(0.25 0.1 260)" />
+      {/* bright bottom inner rim */}
+      <g clipPath={`url(#${clipId})`}>
+        <ellipse cx={cx} cy={cy + 50} rx={70} ry={50} fill="url(#eye-rim)" />
+        {/* subtle internal shadow rim */}
+        <ellipse
+          cx={cx}
+          cy={cy + 15}
+          rx={48}
+          ry={10}
+          fill="oklch(1 0 0 / 0.15)"
+        />
+      </g>
+      {/* big glossy pupil highlight (the reference's white drop shape) */}
+      <ellipse
+        cx={pupilCx}
+        cy={pupilCy}
+        rx={28}
+        ry={36}
+        fill="oklch(1 0 0)"
+      />
+      {/* small secondary sparkle */}
+      <circle
+        cx={pupilCx + 18}
+        cy={pupilCy + 14}
+        r={6}
+        fill="oklch(1 0 0 / 0.9)"
+      />
     </g>
   );
 }
+
+/* ============================================================
+ * BROWS / MOUTH / EXPRESSION MAPPING
+ * ============================================================ */
 
 function eyeShapeFor(expression: LumiExpression, blink: boolean): EyeShape {
   if (blink) return "closed";
@@ -178,53 +318,119 @@ function eyeShapeFor(expression: LumiExpression, blink: boolean): EyeShape {
   }
 }
 
-function mouthPathFor(expression: LumiExpression): string {
-  // base center around (160, 215)
+/**
+ * Returns left + right brow paths. The reference shows curved brows that
+ * slope inward (concerned/angry). Other expressions use softer curves.
+ */
+function browPathsFor(expression: LumiExpression): [string, string] {
+  // baseline y for brows (just above the eyes)
   switch (expression) {
-    case "happy":
-      return "M 132 210 q 28 28 56 0";
-    case "excited":
-      return "M 128 208 q 32 36 64 0";
-    case "sad":
-      return "M 132 222 q 28 -22 56 0";
     case "concerned":
-      return "M 134 220 q 26 -10 52 0";
-    case "speaking":
-      return "M 138 214 q 22 16 44 0 q -22 -8 -44 0 Z";
-    case "thinking":
-      return "M 140 218 q 20 -4 40 -2";
-    case "sleepy":
-      return "M 140 218 q 20 6 40 0";
+    case "sad":
+      // inner ends raised → worried look
+      return [
+        "M 195 220 Q 260 195 325 215",
+        "M 475 215 Q 540 195 605 220",
+      ];
     case "confused":
-      return "M 138 220 q 14 -8 28 4 q 8 -4 16 -6";
-    case "listening":
-      return "M 138 216 q 22 6 44 0";
+      return [
+        "M 195 215 Q 260 200 325 220",
+        "M 475 225 Q 540 205 605 215",
+      ];
+    case "happy":
+    case "excited":
+      return [
+        "M 200 215 Q 260 195 320 215",
+        "M 480 215 Q 540 195 600 215",
+      ];
+    case "thinking":
+      return [
+        "M 200 220 Q 260 210 325 218",
+        "M 475 218 Q 540 210 600 220",
+      ];
+    case "sleepy":
+      return [
+        "M 200 230 Q 260 225 325 232",
+        "M 475 232 Q 540 225 600 230",
+      ];
     default:
-      return "M 138 216 q 22 4 44 0";
+      return [
+        "M 200 220 Q 260 205 325 218",
+        "M 475 218 Q 540 205 600 220",
+      ];
   }
 }
 
-function auraClassFor(expression: LumiExpression): string {
-  const base =
-    "rounded-full blur-3xl opacity-80 transition-all duration-700 ease-out";
+function mouthPathFor(expression: LumiExpression): string {
+  // Mouth centered around (400, 470)
   switch (expression) {
-    case "listening":
-      return `${base} bg-[radial-gradient(circle,oklch(0.85_0.13_55_/_0.6),transparent_65%)] animate-pulse`;
-    case "speaking":
-      return `${base} bg-[radial-gradient(circle,oklch(0.84_0.16_45_/_0.7),transparent_65%)]`;
-    case "thinking":
-      return `${base} bg-[radial-gradient(circle,oklch(0.82_0.09_70_/_0.55),transparent_65%)]`;
     case "happy":
+      return "M 350 460 Q 400 510 450 460";
     case "excited":
-      return `${base} bg-[radial-gradient(circle,oklch(0.9_0.14_80_/_0.7),transparent_65%)]`;
+      return "M 340 455 Q 400 520 460 455";
     case "sad":
+      return "M 350 485 Q 400 445 450 485";
     case "concerned":
-      return `${base} bg-[radial-gradient(circle,oklch(0.7_0.08_260_/_0.5),transparent_65%)]`;
+      // small downward arc like the reference
+      return "M 365 475 Q 400 455 435 475";
+    case "speaking":
+      return "M 365 465 Q 400 490 435 465 Q 400 455 365 465 Z";
+    case "thinking":
+      return "M 370 470 Q 400 465 430 470";
     case "sleepy":
-      return `${base} bg-[radial-gradient(circle,oklch(0.7_0.05_280_/_0.45),transparent_65%)]`;
+      return "M 370 470 Q 400 478 430 470";
     case "confused":
-      return `${base} bg-[radial-gradient(circle,oklch(0.78_0.1_30_/_0.55),transparent_65%)]`;
+      return "M 365 472 Q 385 462 405 478 Q 420 466 435 470";
+    case "listening":
+      return "M 365 468 Q 400 478 435 468";
     default:
-      return `${base} bg-[radial-gradient(circle,oklch(0.88_0.08_70_/_0.55),transparent_65%)]`;
+      return "M 370 470 Q 400 478 430 470";
   }
+}
+
+/* ============================================================
+ * ANGER MARK — the small red "stress" cross from the reference
+ * ============================================================ */
+
+function AngerMark({ x, y }: { x: number; y: number }) {
+  const stroke = "oklch(0.62 0.22 25)";
+  return (
+    <g
+      transform={`translate(${x}, ${y})`}
+      filter="url(#outline-glow)"
+      style={{
+        transformOrigin: `${x}px ${y}px`,
+        animation: "lumi-anger-pulse 1.6s ease-in-out infinite",
+      }}
+    >
+      <path
+        d="M -22 0 Q -10 6 0 0 Q 10 -6 22 0"
+        stroke={stroke}
+        strokeWidth={5}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M 0 -22 Q 6 -10 0 0 Q -6 10 0 22"
+        stroke={stroke}
+        strokeWidth={5}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M -16 -16 Q -8 -8 0 -2"
+        stroke={stroke}
+        strokeWidth={5}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M 16 16 Q 8 8 2 2"
+        stroke={stroke}
+        strokeWidth={5}
+        strokeLinecap="round"
+        fill="none"
+      />
+    </g>
+  );
 }
