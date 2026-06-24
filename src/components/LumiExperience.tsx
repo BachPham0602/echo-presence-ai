@@ -123,11 +123,6 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          {variant === "calm" && (
-            <span className="glass-pill px-3 py-1 text-xs tracking-wide text-foreground/85">
-              {style.name}
-            </span>
-          )}
         </div>
         <EmotionIndicator emotion={pipeline.snapshot.lastUserEmotion} />
       </header>
