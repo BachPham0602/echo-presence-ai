@@ -2,7 +2,9 @@ import type { PipelineState } from "@/types/pipeline";
 
 interface StatusIndicatorProps {
   state: PipelineState;
+  labelOverrides?: Partial<Record<PipelineState, string>>;
 }
+
 
 const LABELS: Record<PipelineState, string> = {
   idle: "Lumi đang ở đây với bạn",
@@ -17,7 +19,7 @@ const LABELS: Record<PipelineState, string> = {
   error: "Có chút trục trặc nhỏ",
 };
 
-export function StatusIndicator({ state }: StatusIndicatorProps) {
+export function StatusIndicator({ state, labelOverrides }: StatusIndicatorProps) {
   const isActive =
     state === "listening" ||
     state === "detecting_addressee" ||
@@ -40,7 +42,7 @@ export function StatusIndicator({ state }: StatusIndicatorProps) {
       >
         {isActive && <span className="absolute inset-0 animate-ping rounded-full bg-primary/60" />}
       </span>
-      <span className="tracking-wide">{LABELS[state]}</span>
+      <span className="tracking-wide">{labelOverrides?.[state] ?? LABELS[state]}</span>
     </div>
   );
 }
