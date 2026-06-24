@@ -19,7 +19,7 @@ const LABELS: Record<PipelineState, string> = {
   error: "Có chút trục trặc nhỏ",
 };
 
-export function StatusIndicator({ state }: StatusIndicatorProps) {
+export function StatusIndicator({ state, labelOverrides }: StatusIndicatorProps) {
   const isActive =
     state === "listening" ||
     state === "detecting_addressee" ||
