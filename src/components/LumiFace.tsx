@@ -114,7 +114,7 @@ export function LumiFace({ expression, showEars = true }: LumiFaceProps) {
           </defs>
 
           {/* ===== EARS (cat-like) ===== */}
-          {(() => {
+          {showEars && (() => {
             const earClass = earAnimationFor(expression);
             return (
               <g>
