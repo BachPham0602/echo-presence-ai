@@ -80,8 +80,8 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           height: "100dvh",
           "--lumi-input-bottom": "24px",
           "--lumi-input-h": "clamp(56px, 8vh, 72px)",
-          "--lumi-status-bottom": variant === "calm" ? "132px" : "88px",
-          "--lumi-chat-bottom": variant === "calm" ? "180px" : "140px",
+          "--lumi-status-bottom": variant === "calm" ? "132px" : "120px",
+          "--lumi-chat-bottom": variant === "calm" ? "180px" : "170px",
         } as CSSProperties
       }
     >
