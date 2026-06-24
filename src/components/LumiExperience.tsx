@@ -3,6 +3,7 @@ import { Menu, ArrowLeft } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { LumiFace } from "@/components/LumiFace";
+import { LumiFace as LumiKawaiiFace } from "@/components/lumi/LumiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
 import { MicButton } from "@/components/MicButton";
@@ -33,7 +34,7 @@ const VARIANT_STYLES: Record<
     name: "Lumi nhí nhảnh",
     background:
       "radial-gradient(ellipse at 50% 30%, oklch(0.55 0.18 25 / 0.7), transparent 65%), linear-gradient(180deg, oklch(0.2 0.1 340), oklch(0.12 0.06 320))",
-    faceFilter: "hue-rotate(120deg) saturate(1.2)",
+    faceFilter: "none",
   },
 };
 
@@ -103,7 +104,11 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           filter: style.faceFilter,
         }}
       >
-        <LumiFace expression={pipeline.snapshot.expression} showEars={variant === "playful"} />
+        {variant === "playful" ? (
+          <LumiKawaiiFace expression={pipeline.snapshot.expression} />
+        ) : (
+          <LumiFace expression={pipeline.snapshot.expression} showEars={false} />
+        )}
       </div>
 
       <header className="absolute inset-x-0 top-5 z-30 flex items-center justify-between px-5">
