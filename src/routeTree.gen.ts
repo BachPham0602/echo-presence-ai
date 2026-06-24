@@ -9,8 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PlayfulRouteImport } from './routes/playful'
+import { Route as CalmRouteImport } from './routes/calm'
 import { Route as IndexRouteImport } from './routes/index'
 
+const PlayfulRoute = PlayfulRouteImport.update({
+  id: '/playful',
+  path: '/playful',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalmRoute = CalmRouteImport.update({
+  id: '/calm',
+  path: '/calm',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +31,50 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/calm': typeof CalmRoute
+  '/playful': typeof PlayfulRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/calm': typeof CalmRoute
+  '/playful': typeof PlayfulRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/calm': typeof CalmRoute
+  '/playful': typeof PlayfulRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/calm' | '/playful'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/calm' | '/playful'
+  id: '__root__' | '/' | '/calm' | '/playful'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CalmRoute: typeof CalmRoute
+  PlayfulRoute: typeof PlayfulRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/playful': {
+      id: '/playful'
+      path: '/playful'
+      fullPath: '/playful'
+      preLoaderRoute: typeof PlayfulRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calm': {
+      id: '/calm'
+      path: '/calm'
+      fullPath: '/calm'
+      preLoaderRoute: typeof CalmRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,17 +87,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CalmRoute: CalmRoute,
+  PlayfulRoute: PlayfulRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
