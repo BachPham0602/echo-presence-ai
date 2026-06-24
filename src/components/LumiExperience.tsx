@@ -34,7 +34,7 @@ const VARIANT_STYLES: Record<
     name: "Lumi nhí nhảnh",
     background:
       "radial-gradient(ellipse at 50% 30%, oklch(0.55 0.18 25 / 0.7), transparent 65%), linear-gradient(180deg, oklch(0.2 0.1 340), oklch(0.12 0.06 320))",
-    faceFilter: "hue-rotate(120deg) saturate(1.2)",
+    faceFilter: "none",
   },
 };
 
