@@ -80,8 +80,8 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           height: "100dvh",
           "--lumi-input-bottom": "24px",
           "--lumi-input-h": "clamp(56px, 8vh, 72px)",
-          "--lumi-status-bottom": variant === "calm" ? "132px" : "88px",
-          "--lumi-chat-bottom": variant === "calm" ? "180px" : "140px",
+          "--lumi-status-bottom": variant === "calm" ? "132px" : "120px",
+          "--lumi-chat-bottom": variant === "calm" ? "180px" : "170px",
         } as CSSProperties
       }
     >
@@ -103,7 +103,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           filter: style.faceFilter,
         }}
       >
-        <LumiFace expression={pipeline.snapshot.expression} />
+        <LumiFace expression={pipeline.snapshot.expression} showEars={variant === "playful"} />
       </div>
 
       <header className="absolute inset-x-0 top-5 z-30 flex items-center justify-between px-5">

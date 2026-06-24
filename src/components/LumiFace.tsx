@@ -3,6 +3,7 @@ import type { LumiExpression } from "@/types/emotion";
 
 interface LumiFaceProps {
   expression: LumiExpression;
+  showEars?: boolean;
 }
 
 /**
@@ -15,7 +16,7 @@ interface LumiFaceProps {
  * Animations: breathing scale, idle blink, slow gaze drift, per-expression
  * brows / eye shape / mouth / accent.
  */
-export function LumiFace({ expression }: LumiFaceProps) {
+export function LumiFace({ expression, showEars = true }: LumiFaceProps) {
   const [blink, setBlink] = useState(false);
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
 
@@ -113,7 +114,7 @@ export function LumiFace({ expression }: LumiFaceProps) {
           </defs>
 
           {/* ===== EARS (cat-like) ===== */}
-          {(() => {
+          {showEars && (() => {
             const earClass = earAnimationFor(expression);
             return (
               <g>
