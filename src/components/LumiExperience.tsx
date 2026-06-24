@@ -160,12 +160,12 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         className="pointer-events-none absolute inset-x-0 z-20 flex flex-col items-center gap-1.5 px-4"
         style={{ bottom: "var(--lumi-status-bottom)" }}
       >
-        {variant === "playful" && (
-          <span className="glass-pill mb-1 px-4 py-1.5 text-sm tracking-wide text-foreground/90">
-            {style.name} đang ở đây với bạn
-          </span>
-        )}
-        <StatusIndicator state={pipeline.snapshot.state} />
+        <StatusIndicator
+          state={pipeline.snapshot.state}
+          labelOverrides={
+            variant === "playful" ? { idle: `${style.name} đang ở đây với bạn` } : undefined
+          }
+        />
         {statusLabel && (
           <span className="glass-pill px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-foreground/75">
             {statusLabel}
