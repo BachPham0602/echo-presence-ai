@@ -243,6 +243,7 @@ function Eye({
     );
   }
 
+  if (shape === "squint") {
     return (
       <path
         d={`M ${cx - 60} ${cy + 8} q 60 -40 120 0`}
