@@ -52,6 +52,18 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
   const mouthCy = 580;
   const blushCy = 510;
 
+  // Choose an idle motion based on the active preset
+  const motionClass =
+    kawaii === "excited"
+      ? "kawaii-bounce"
+      : kawaii === "playful"
+        ? "kawaii-sway"
+        : kawaii === "sleepy"
+          ? "lumi-breathe"
+          : "kawaii-bob";
+
+  const isTalking = expression === "speaking";
+
   return (
     <div className="absolute inset-0 h-full w-full">
       {/* Soft ambient halo behind the face */}
@@ -63,11 +75,11 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
         }}
         aria-hidden
       />
-      <div className="lumi-breathe absolute inset-0">
+      <div className={`${motionClass} absolute inset-0`}>
         <svg
           viewBox="0 0 800 1000"
           preserveAspectRatio="xMidYMid meet"
-          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(120,160,255,0.4)]"
+          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(120,160,255,0.45)]"
           role="img"
           aria-label={`Lumi kawaii — ${kawaii}`}
         >
@@ -85,7 +97,7 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
           </defs>
 
           <g
-            transform="translate(400, 500) scale(1.15) translate(-400, -500)"
+            transform="translate(400, 500) scale(1.3) translate(-400, -500)"
             style={{ transition: "transform 0.8s ease" }}
           >
             {/* Eyebrows */}
@@ -95,19 +107,33 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
             </g>
 
             {/* Blush */}
-            <LumiBlush cx={leftEyeCx - 20} cy={blushCy} intensity={p.blush} />
-            <LumiBlush cx={rightEyeCx + 20} cy={blushCy} intensity={p.blush} />
+            <g className="kawaii-blush-pulse">
+              <LumiBlush cx={leftEyeCx - 20} cy={blushCy} intensity={p.blush} />
+            </g>
+            <g className="kawaii-blush-pulse" style={{ animationDelay: "-1.3s" }}>
+              <LumiBlush cx={rightEyeCx + 20} cy={blushCy} intensity={p.blush} />
+            </g>
 
             {/* Eyes — keyed by shape so swaps animate */}
-            <g key={`eye-l-${p.leftEye}-${blink}`} className="animate-fade-in">
+            <g
+              key={`eye-l-${p.leftEye}-${blink}`}
+              className={`animate-fade-in ${kawaii === "excited" ? "kawaii-sparkle" : ""}`}
+            >
               <LumiEye cx={leftEyeCx} cy={eyeCy} shape={p.leftEye} side="left" blink={blink} />
             </g>
-            <g key={`eye-r-${p.rightEye}-${blink}`} className="animate-fade-in">
+            <g
+              key={`eye-r-${p.rightEye}-${blink}`}
+              className={`animate-fade-in ${kawaii === "excited" ? "kawaii-sparkle" : ""}`}
+              style={kawaii === "excited" ? { animationDelay: "-0.8s" } : undefined}
+            >
               <LumiEye cx={rightEyeCx} cy={eyeCy} shape={p.rightEye} side="right" blink={blink} />
             </g>
 
             {/* Mouth */}
-            <g key={`mouth-${p.mouth}`} className="animate-fade-in">
+            <g
+              key={`mouth-${p.mouth}-${isTalking}`}
+              className={`animate-fade-in ${isTalking ? "kawaii-mouth-talk" : ""}`}
+            >
               <LumiMouth cx={400} cy={mouthCy} shape={p.mouth} />
             </g>
           </g>
@@ -116,3 +142,4 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
     </div>
   );
 }
+

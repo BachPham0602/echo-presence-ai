@@ -96,11 +96,11 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         className="pointer-events-none absolute"
         style={{
           zIndex: 1,
-          top: "6vh",
+          top: variant === "playful" ? "2vh" : "6vh",
           left: "50%",
           transform: "translateX(-50%)",
-          width: "min(95vw, 1700px)",
-          height: "min(75vh, 900px)",
+          width: variant === "playful" ? "min(125vw, 2200px)" : "min(95vw, 1700px)",
+          height: variant === "playful" ? "min(98vh, 1170px)" : "min(75vh, 900px)",
           filter: style.faceFilter,
         }}
       >
@@ -110,6 +110,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           <LumiFace expression={pipeline.snapshot.expression} showEars={false} />
         )}
       </div>
+
 
       <header className="absolute inset-x-0 top-5 z-30 flex items-center justify-between px-5">
         <div className="flex items-center gap-2">

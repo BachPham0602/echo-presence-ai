@@ -297,6 +297,62 @@
   }
 }
 
+@utility kawaii-bob {
+  animation: kawaii-bob 3.8s ease-in-out infinite;
+  transform-origin: 50% 60%;
+}
+@utility kawaii-bounce {
+  animation: kawaii-bounce 2.4s ease-in-out infinite;
+  transform-origin: 50% 80%;
+}
+@utility kawaii-sway {
+  animation: kawaii-sway 5s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+@utility kawaii-blush-pulse {
+  animation: kawaii-blush-pulse 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+@utility kawaii-sparkle {
+  animation: kawaii-sparkle 1.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+@utility kawaii-mouth-talk {
+  animation: kawaii-mouth-talk 0.7s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 30%;
+}
+
+@keyframes kawaii-bob {
+  0%, 100% { transform: translateY(0) rotate(-1.2deg); }
+  50%      { transform: translateY(-10px) rotate(1.2deg); }
+}
+@keyframes kawaii-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40%      { transform: translateY(-22px) scale(1.04, 0.96); }
+  60%      { transform: translateY(-22px) scale(1.04, 0.96); }
+}
+@keyframes kawaii-sway {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25%      { transform: translateX(-12px) rotate(-2deg); }
+  75%      { transform: translateX(12px)  rotate(2deg);  }
+}
+@keyframes kawaii-blush-pulse {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.12); }
+}
+@keyframes kawaii-sparkle {
+  0%, 100% { opacity: 0.6; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+@keyframes kawaii-mouth-talk {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(0.55); }
+}
+
+
 @keyframes lumi-anger-pulse {
   0%,
   100% {
