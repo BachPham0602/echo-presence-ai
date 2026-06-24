@@ -2,7 +2,9 @@ import type { PipelineState } from "@/types/pipeline";
 
 interface StatusIndicatorProps {
   state: PipelineState;
+  labelOverrides?: Partial<Record<PipelineState, string>>;
 }
+
 
 const LABELS: Record<PipelineState, string> = {
   idle: "Lumi đang ở đây với bạn",
