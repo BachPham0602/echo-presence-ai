@@ -8,7 +8,7 @@ import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
 import { MicButton } from "@/components/MicButton";
 import { StatusIndicator } from "@/components/StatusIndicator";
-import { EmotionIndicator } from "@/components/EmotionIndicator";
+
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { useLumiPipeline } from "@/hooks/useLumiPipeline";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
