@@ -37,12 +37,12 @@ export interface ExpressionPreset {
 }
 
 export const KAWAII_PRESETS: Record<KawaiiExpression, ExpressionPreset> = {
-  neutral: { leftEye: "soft", rightEye: "soft", mouth: "smile-small", brow: "none", blush: 0.45 },
-  happy: { leftEye: "smile", rightEye: "smile", mouth: "smile-open", brow: "none", blush: 0.85 },
+  neutral: { leftEye: "soft", rightEye: "soft", mouth: "smile-small", brow: "soft-up", blush: 0.45 },
+  happy: { leftEye: "smile", rightEye: "smile", mouth: "smile-open", brow: "soft-up", blush: 0.85 },
   excited: { leftEye: "sparkle", rightEye: "sparkle", mouth: "smile-big", brow: "soft-up", blush: 0.9 },
-  playful: { leftEye: "wink-left", rightEye: "round", mouth: "tongue", brow: "none", blush: 0.85 },
+  playful: { leftEye: "wink-left", rightEye: "round", mouth: "tongue", brow: "soft-up", blush: 0.85 },
   sad: { leftEye: "sparkle", rightEye: "sparkle", mouth: "frown", brow: "soft-down", blush: 0.4 },
-  sleepy: { leftEye: "half", rightEye: "half", mouth: "relaxed", brow: "none", blush: 0.5 },
+  sleepy: { leftEye: "half", rightEye: "half", mouth: "relaxed", brow: "soft-up", blush: 0.5 },
   thinking: { leftEye: "soft", rightEye: "round", mouth: "uncertain", brow: "raised-left", blush: 0.45 },
 };
 
