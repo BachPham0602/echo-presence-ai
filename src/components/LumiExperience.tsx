@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { LumiFace } from "@/components/LumiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
+import { MicButton } from "@/components/MicButton";
 import { StatusIndicator } from "@/components/StatusIndicator";
 import { EmotionIndicator } from "@/components/EmotionIndicator";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
