@@ -241,6 +241,22 @@ function Eye({
         filter="url(#outline-glow)"
       />
     );
+}
+
+function earAnimationFor(expression: LumiExpression): { left: string; right: string } {
+  switch (expression) {
+    case "listening":
+      return { left: "lumi-ear-listening", right: "lumi-ear-listening-right" };
+    case "speaking":
+    case "excited":
+      return { left: "lumi-ear-speaking", right: "lumi-ear-speaking-right" };
+    case "sleepy":
+      return { left: "lumi-ear-sleepy", right: "lumi-ear-sleepy-right" };
+    case "sad":
+    case "concerned":
+      return { left: "lumi-ear-sad", right: "lumi-ear-sad-right" };
+    default:
+      return { left: "lumi-ear-idle", right: "lumi-ear-idle-right" };
   }
   if (shape === "squint") {
     return (
