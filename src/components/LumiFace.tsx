@@ -113,32 +113,41 @@ export function LumiFace({ expression }: LumiFaceProps) {
           </defs>
 
           {/* ===== EARS (cat-like) ===== */}
-          <g>
-            <path
-              d="M 180 250 L 240 90 L 320 230 Z"
-              fill="oklch(0.18 0.07 260)"
-              stroke="oklch(1 0 0)"
-              strokeWidth={5}
-              strokeLinejoin="round"
-              filter="url(#outline-glow)"
-            />
-            <path
-              d="M 222 220 L 248 130 L 292 215 Z"
-              fill="oklch(0.55 0.18 25 / 0.55)"
-            />
-            <path
-              d="M 480 230 L 560 90 L 620 250 Z"
-              fill="oklch(0.18 0.07 260)"
-              stroke="oklch(1 0 0)"
-              strokeWidth={5}
-              strokeLinejoin="round"
-              filter="url(#outline-glow)"
-            />
-            <path
-              d="M 508 215 L 552 130 L 578 220 Z"
-              fill="oklch(0.55 0.18 25 / 0.55)"
-            />
-          </g>
+          {(() => {
+            const earClass = earAnimationFor(expression);
+            return (
+              <g>
+                <g className={`lumi-ear ${earClass.left}`}>
+                  <path
+                    d="M 180 250 L 240 90 L 320 230 Z"
+                    fill="oklch(0.18 0.07 260)"
+                    stroke="oklch(1 0 0)"
+                    strokeWidth={5}
+                    strokeLinejoin="round"
+                    filter="url(#outline-glow)"
+                  />
+                  <path
+                    d="M 222 220 L 248 130 L 292 215 Z"
+                    fill="oklch(0.55 0.18 25 / 0.55)"
+                  />
+                </g>
+                <g className={`lumi-ear ${earClass.right}`}>
+                  <path
+                    d="M 480 230 L 560 90 L 620 250 Z"
+                    fill="oklch(0.18 0.07 260)"
+                    stroke="oklch(1 0 0)"
+                    strokeWidth={5}
+                    strokeLinejoin="round"
+                    filter="url(#outline-glow)"
+                  />
+                  <path
+                    d="M 508 215 L 552 130 L 578 220 Z"
+                    fill="oklch(0.55 0.18 25 / 0.55)"
+                  />
+                </g>
+              </g>
+            );
+          })()}
 
           {/* ===== EYES ===== */}
           <g
@@ -233,6 +242,7 @@ function Eye({
       />
     );
   }
+
   if (shape === "squint") {
     return (
       <path
@@ -353,3 +363,20 @@ function mouthPathFor(expression: LumiExpression): string {
   }
 }
 
+
+function earAnimationFor(expression: LumiExpression): { left: string; right: string } {
+  switch (expression) {
+    case "listening":
+      return { left: "lumi-ear-listening", right: "lumi-ear-listening-right" };
+    case "speaking":
+    case "excited":
+      return { left: "lumi-ear-speaking", right: "lumi-ear-speaking-right" };
+    case "sleepy":
+      return { left: "lumi-ear-sleepy", right: "lumi-ear-sleepy-right" };
+    case "sad":
+    case "concerned":
+      return { left: "lumi-ear-sad", right: "lumi-ear-sad-right" };
+    default:
+      return { left: "lumi-ear-idle", right: "lumi-ear-idle-right" };
+  }
+}
