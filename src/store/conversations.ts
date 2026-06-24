@@ -101,6 +101,7 @@ export interface UseConversationsResult {
   selectConversation: (id: string) => ChatMessage[];
   appendMessage: (message: ChatMessage) => void;
   deleteConversation: (id: string) => void;
+  renameConversation: (id: string, title: string) => void;
 }
 
 export function useConversations(): UseConversationsResult {
@@ -182,6 +183,17 @@ export function useConversations(): UseConversationsResult {
     }));
   }, []);
 
+  const renameConversation = useCallback((id: string, title: string) => {
+    const clean = title.trim().replace(/\s+/g, " ");
+    if (!clean) return;
+    setState((prev) => ({
+      ...prev,
+      conversations: prev.conversations.map((c) =>
+        c.id === id ? { ...c, title: clean, updatedAt: Date.now() } : c,
+      ),
+    }));
+  }, []);
+
   const activeMessages = state.conversations.find((c) => c.id === state.activeId)?.messages ?? [];
 
   return {
@@ -192,5 +204,7 @@ export function useConversations(): UseConversationsResult {
     selectConversation,
     appendMessage,
     deleteConversation,
+    renameConversation,
   };
 }
+
