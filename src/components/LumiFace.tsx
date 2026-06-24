@@ -3,6 +3,7 @@ import type { LumiExpression } from "@/types/emotion";
 
 interface LumiFaceProps {
   expression: LumiExpression;
+  showEars?: boolean;
 }
 
 /**
