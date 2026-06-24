@@ -148,16 +148,23 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         onDelete={(id) => conversations.deleteConversation(id)}
       />
 
-      <MessengerChat
-        messages={pipeline.messages}
-        interimTranscript={undefined}
-        listening={stt.isListening}
-      />
+      {variant === "calm" && (
+        <MessengerChat
+          messages={pipeline.messages}
+          interimTranscript={undefined}
+          listening={stt.isListening}
+        />
+      )}
 
       <div
         className="pointer-events-none absolute inset-x-0 z-20 flex flex-col items-center gap-1.5 px-4"
         style={{ bottom: "var(--lumi-status-bottom)" }}
       >
+        {variant === "playful" && (
+          <span className="glass-pill mb-1 px-4 py-1.5 text-sm tracking-wide text-foreground/90">
+            {style.name} đang ở đây với bạn
+          </span>
+        )}
         <StatusIndicator state={pipeline.snapshot.state} />
         {statusLabel && (
           <span className="glass-pill px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-foreground/75">
@@ -171,14 +178,26 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         )}
       </div>
 
-      <ChatComposer
-        onSend={(t) => void pipeline.sendText(t)}
-        micActive={stt.isListening}
-        muted={!stt.isListening}
-        onToggleMic={() => void handleToggleMic()}
-        listening={stt.isListening}
-        interimTranscript={pipeline.interimTranscript}
-      />
+      {variant === "calm" ? (
+        <ChatComposer
+          onSend={(t) => void pipeline.sendText(t)}
+          micActive={stt.isListening}
+          muted={!stt.isListening}
+          onToggleMic={() => void handleToggleMic()}
+          listening={stt.isListening}
+          interimTranscript={pipeline.interimTranscript}
+        />
+      ) : (
+        <div className="pointer-events-none absolute inset-x-0 z-20 flex justify-center" style={{ bottom: "var(--lumi-input-bottom)" }}>
+          <div className="pointer-events-auto">
+            <MicButton
+              active={stt.isListening}
+              muted={!stt.isListening}
+              onClick={() => void handleToggleMic()}
+            />
+          </div>
+        </div>
+      )}
     </main>
   );
 }
