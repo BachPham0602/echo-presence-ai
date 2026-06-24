@@ -112,6 +112,34 @@ export function LumiFace({ expression }: LumiFaceProps) {
             </clipPath>
           </defs>
 
+          {/* ===== EARS (cat-like) ===== */}
+          <g>
+            <path
+              d="M 180 250 L 240 90 L 320 230 Z"
+              fill="oklch(0.18 0.07 260)"
+              stroke="oklch(1 0 0)"
+              strokeWidth={5}
+              strokeLinejoin="round"
+              filter="url(#outline-glow)"
+            />
+            <path
+              d="M 222 220 L 248 130 L 292 215 Z"
+              fill="oklch(0.55 0.18 25 / 0.55)"
+            />
+            <path
+              d="M 480 230 L 560 90 L 620 250 Z"
+              fill="oklch(0.18 0.07 260)"
+              stroke="oklch(1 0 0)"
+              strokeWidth={5}
+              strokeLinejoin="round"
+              filter="url(#outline-glow)"
+            />
+            <path
+              d="M 508 215 L 552 130 L 578 220 Z"
+              fill="oklch(0.55 0.18 25 / 0.55)"
+            />
+          </g>
+
           {/* ===== EYES ===== */}
           <g
             transform={`translate(${gaze.x}, ${gaze.y})`}
