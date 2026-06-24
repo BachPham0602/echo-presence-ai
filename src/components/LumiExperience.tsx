@@ -130,7 +130,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
             <Menu className="h-5 w-5" />
           </button>
         </div>
-        <EmotionIndicator emotion={pipeline.snapshot.lastUserEmotion} />
+        
       </header>
 
       <ConversationSidebar
