@@ -145,7 +145,13 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           const msgs = conversations.selectConversation(id);
           pipeline.loadMessages(msgs);
         }}
-        onDelete={(id) => conversations.deleteConversation(id)}
+        onDelete={(id) => {
+          conversations.deleteConversation(id);
+          if (id === conversations.activeId) {
+            pipeline.resetMessages();
+          }
+        }}
+        onRename={(id, title) => conversations.renameConversation(id, title)}
       />
 
       <MessengerChat
