@@ -42,7 +42,7 @@ export function StatusIndicator({ state, labelOverrides }: StatusIndicatorProps)
       >
         {isActive && <span className="absolute inset-0 animate-ping rounded-full bg-primary/60" />}
       </span>
-      <span className="tracking-wide">{LABELS[state]}</span>
+      <span className="tracking-wide">{labelOverrides?.[state] ?? LABELS[state]}</span>
     </div>
   );
 }
