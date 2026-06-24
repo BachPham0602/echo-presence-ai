@@ -117,7 +117,10 @@ export function LumiFace({ expression }: LumiFaceProps) {
             const earClass = earAnimationFor(expression);
             return (
               <g>
-                <g className={`lumi-ear ${earClass.left}`}>
+                <g
+                  className={`lumi-ear ${earClass.left}`}
+                  style={{ transformOrigin: "250px 240px", transformBox: "view-box" } as CSSProperties}
+                >
                   <path
                     d="M 180 250 L 240 90 L 320 230 Z"
                     fill="oklch(0.18 0.07 260)"
@@ -131,7 +134,10 @@ export function LumiFace({ expression }: LumiFaceProps) {
                     fill="oklch(0.55 0.18 25 / 0.55)"
                   />
                 </g>
-                <g className={`lumi-ear ${earClass.right}`}>
+                <g
+                  className={`lumi-ear ${earClass.right}`}
+                  style={{ transformOrigin: "550px 240px", transformBox: "view-box" } as CSSProperties}
+                >
                   <path
                     d="M 480 230 L 560 90 L 620 250 Z"
                     fill="oklch(0.18 0.07 260)"
