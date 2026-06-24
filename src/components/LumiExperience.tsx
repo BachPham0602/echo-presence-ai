@@ -93,14 +93,14 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
       />
 
       <div
-        className="pointer-events-none absolute"
+        className={variant === "calm" ? "kawaii-bob pointer-events-none absolute" : "pointer-events-none absolute"}
         style={{
           zIndex: 1,
-          top: variant === "playful" ? "2vh" : "6vh",
+          top: variant === "playful" ? "2vh" : "2vh",
           left: "50%",
           transform: "translateX(-50%)",
-          width: variant === "playful" ? "min(125vw, 2200px)" : "min(95vw, 1700px)",
-          height: variant === "playful" ? "min(98vh, 1170px)" : "min(75vh, 900px)",
+          width: variant === "playful" ? "min(125vw, 2200px)" : "min(124vw, 2210px)",
+          height: variant === "playful" ? "min(98vh, 1170px)" : "min(98vh, 1170px)",
           filter: style.faceFilter,
         }}
       >
