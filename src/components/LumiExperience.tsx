@@ -161,9 +161,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
       >
         <StatusIndicator
           state={pipeline.snapshot.state}
-          labelOverrides={
-            variant === "playful" ? { idle: `${style.name} đang ở đây với bạn` } : undefined
-          }
+          labelOverrides={{ idle: `${style.name} đang ở đây với bạn` }}
         />
         {statusLabel && (
           <span className="glass-pill px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-foreground/75">
