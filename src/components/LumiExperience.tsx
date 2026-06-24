@@ -103,7 +103,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           filter: style.faceFilter,
         }}
       >
-        <LumiFace expression={pipeline.snapshot.expression} />
+        <LumiFace expression={pipeline.snapshot.expression} showEars={variant === "playful"} />
       </div>
 
       <header className="absolute inset-x-0 top-5 z-30 flex items-center justify-between px-5">
