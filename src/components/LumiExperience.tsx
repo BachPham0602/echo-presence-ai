@@ -93,7 +93,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
       />
 
       <div
-        className={variant === "calm" ? "kawaii-bob pointer-events-none absolute" : "pointer-events-none absolute"}
+        className="pointer-events-none absolute"
         style={{
           zIndex: 1,
           top: variant === "playful" ? "2vh" : "2vh",
@@ -104,11 +104,13 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           filter: style.faceFilter,
         }}
       >
-        {variant === "playful" ? (
-          <LumiKawaiiFace expression={pipeline.snapshot.expression} />
-        ) : (
-          <LumiFace expression={pipeline.snapshot.expression} showEars={false} />
-        )}
+        <div className={variant === "calm" ? "kawaii-bob h-full w-full" : "h-full w-full"}>
+          {variant === "playful" ? (
+            <LumiKawaiiFace expression={pipeline.snapshot.expression} />
+          ) : (
+            <LumiFace expression={pipeline.snapshot.expression} showEars={false} />
+          )}
+        </div>
       </div>
 
 
