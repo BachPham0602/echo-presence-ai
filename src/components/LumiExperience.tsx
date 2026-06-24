@@ -148,13 +148,11 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         onDelete={(id) => conversations.deleteConversation(id)}
       />
 
-      {variant === "calm" && (
-        <MessengerChat
-          messages={pipeline.messages}
-          interimTranscript={undefined}
-          listening={stt.isListening}
-        />
-      )}
+      <MessengerChat
+        messages={pipeline.messages}
+        interimTranscript={pipeline.interimTranscript}
+        listening={stt.isListening}
+      />
 
       <div
         className="pointer-events-none absolute inset-x-0 z-20 flex flex-col items-center gap-1.5 px-4"
