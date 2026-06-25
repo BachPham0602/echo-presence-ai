@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { Menu, ArrowLeft, Bug } from "lucide-react";
+import { Menu, ArrowLeft, Smile } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
@@ -182,7 +182,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
           title="Dev: Expression panel"
         >
-          <Bug className="h-5 w-5" />
+          <Smile className="h-5 w-5" />
         </button>
       </header>
 
