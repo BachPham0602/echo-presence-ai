@@ -72,6 +72,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Middle-center → speaking (asymmetric wide eye + small "o")
   speaking: (
     <g>
+      <path d="M28 38 Q42 30 56 38" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M82 32 Q102 22 122 32" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="40" cy="60" rx="14" ry="15" fill="black" />
       <ellipse cx="34" cy="52" rx="5" ry="6" fill="white" />
       <ellipse cx="102" cy="57" rx="30" ry="31" fill="black" />
