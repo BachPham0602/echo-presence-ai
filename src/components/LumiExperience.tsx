@@ -129,7 +129,14 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         }}
       >
         <div className="kawaii-bob h-full w-full">
-          <LumiCalmFace expression={activeExpression} />
+          {variant === "calm" ? (
+            <LumiCalmFace expression={activeExpression} />
+          ) : (
+            <LumiKawaiiFace
+              expression={pipeline.snapshot.expression}
+              moodOverride={expressionToKawaii(activeExpression)}
+            />
+          )}
         </div>
       </div>
 
