@@ -128,12 +128,8 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           filter: style.faceFilter,
         }}
       >
-        <div className={variant === "calm" ? "kawaii-bob h-full w-full" : "h-full w-full"}>
-          {variant === "calm" ? (
-            <LumiCalmFace expression={activeExpression} />
-          ) : (
-            <LumiKawaiiFace expression={pipeline.snapshot.expression} />
-          )}
+        <div className="kawaii-bob h-full w-full">
+          <LumiCalmFace expression={activeExpression} />
         </div>
       </div>
 
