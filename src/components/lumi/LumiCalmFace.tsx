@@ -41,6 +41,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Top-right → laughing (open mouth + happy tear)
   laughing: (
     <g>
+      <path d="M28 30 Q45 20 60 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M90 30 Q105 20 122 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="22" ry="24" fill="black" />
       <ellipse cx="38" cy="48" rx="7" ry="9" fill="white" />
       <ellipse cx="105" cy="55" rx="22" ry="24" fill="black" />
