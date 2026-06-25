@@ -104,21 +104,8 @@ export function LumiCartoonFace({ expression }: Props) {
           role="img"
           aria-label={`Lumi — ${mood}`}
         >
-          {/* Round cream head */}
-          <circle
-            cx={150}
-            cy={170}
-            r={140}
-            fill={SKIN}
-            stroke={SKIN_STROKE}
-            strokeWidth={4}
-          />
-          {/* Soft blush */}
-          <ellipse cx={60} cy={210} rx={22} ry={10} fill="#f4a3b5" opacity={0.55} />
-          <ellipse cx={240} cy={210} rx={22} ry={10} fill="#f4a3b5" opacity={0.55} />
-
-          {/* Feature tile — original 90x90 reference, scaled 2x, centered */}
-          <g transform="translate(60 60) scale(2)">
+          {/* Features only — no head, no blush. Tile is 90x90, scaled & centered. */}
+          <g transform="translate(37.5 57.5) scale(2.5)">
             {MOODS.map((m) => (
               <g
                 key={m}
@@ -328,18 +315,28 @@ function ClosedEyes({ wide }: { wide?: boolean }) {
 }
 
 function HalfEye({ cx }: { cx: number }) {
+  // Half-lidded eye: clip eye whites/pupil to the lower half, then draw
+  // the curved upper lid as a stroked path. No solid skin fill needed.
+  const clipId = `lumi-halflid-${cx}`;
   return (
     <>
-      <ellipse cx={cx} cy={38} rx={20} ry={23} fill="white" stroke={INK} strokeWidth={3.5} />
-      <ellipse cx={cx} cy={44} rx={12} ry={14} fill={INK} />
-      <ellipse cx={cx - 4} cy={40} rx={4} ry={4.5} fill="white" />
-      {/* upper lid covers half */}
-      <rect x={cx - 20} y={18} width={40} height={20} fill={SKIN} />
+      <defs>
+        <clipPath id={clipId}>
+          <path d={`M ${cx - 22} 38 Q ${cx} 50 ${cx + 22} 38 L ${cx + 22} 64 L ${cx - 22} 64 Z`} />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${clipId})`}>
+        <ellipse cx={cx} cy={38} rx={20} ry={23} fill="white" stroke={INK} strokeWidth={3.5} />
+        <ellipse cx={cx} cy={44} rx={12} ry={14} fill={INK} />
+        <ellipse cx={cx - 4} cy={40} rx={4} ry={4.5} fill="white" />
+      </g>
+      {/* curved upper lid */}
       <path
         d={`M ${cx - 20} 38 Q ${cx} 28 ${cx + 20} 38`}
-        fill={SKIN}
+        fill="none"
         stroke={INK}
         strokeWidth={3.5}
+        strokeLinecap="round"
       />
     </>
   );
