@@ -125,6 +125,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Bottom-right → surprised (huge round eyes, open "o" mouth)
   surprised: (
     <g>
+      <path d="M26 26 Q45 16 62 26" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M88 26 Q105 16 124 26" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="26" ry="28" fill="black" />
       <ellipse cx="36" cy="44" rx="9" ry="11" fill="white" />
       <ellipse cx="105" cy="55" rx="26" ry="28" fill="black" />
