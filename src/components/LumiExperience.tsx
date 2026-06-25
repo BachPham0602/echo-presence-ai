@@ -2,7 +2,7 @@ import { useCallback, useState, type CSSProperties } from "react";
 import { Menu, ArrowLeft } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-import { LumiFace } from "@/components/LumiFace";
+import { LumiCartoonFace } from "@/components/LumiCartoonFace";
 import { LumiKawaiiFace } from "@/components/LumiKawaiiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
