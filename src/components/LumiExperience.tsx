@@ -61,7 +61,12 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
 
   // Subscribe to manual overrides from the dev panel / setExpression() calls.
   const [managed, setManaged] = useState<ExpressionName>(() => getExpression());
-  useEffect(() => subscribeExpression(setManaged), []);
+  useEffect(() => {
+    const unsub = subscribeExpression(setManaged);
+    return () => {
+      unsub();
+    };
+  }, []);
   const activeExpression: ExpressionName = override ?? managed;
 
   const handleFinal = useCallback(
