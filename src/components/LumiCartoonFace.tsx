@@ -315,18 +315,28 @@ function ClosedEyes({ wide }: { wide?: boolean }) {
 }
 
 function HalfEye({ cx }: { cx: number }) {
+  // Half-lidded eye: clip eye whites/pupil to the lower half, then draw
+  // the curved upper lid as a stroked path. No solid skin fill needed.
+  const clipId = `lumi-halflid-${cx}`;
   return (
     <>
-      <ellipse cx={cx} cy={38} rx={20} ry={23} fill="white" stroke={INK} strokeWidth={3.5} />
-      <ellipse cx={cx} cy={44} rx={12} ry={14} fill={INK} />
-      <ellipse cx={cx - 4} cy={40} rx={4} ry={4.5} fill="white" />
-      {/* upper lid covers half */}
-      <rect x={cx - 20} y={18} width={40} height={20} fill={SKIN} />
+      <defs>
+        <clipPath id={clipId}>
+          <path d={`M ${cx - 22} 38 Q ${cx} 50 ${cx + 22} 38 L ${cx + 22} 64 L ${cx - 22} 64 Z`} />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${clipId})`}>
+        <ellipse cx={cx} cy={38} rx={20} ry={23} fill="white" stroke={INK} strokeWidth={3.5} />
+        <ellipse cx={cx} cy={44} rx={12} ry={14} fill={INK} />
+        <ellipse cx={cx - 4} cy={40} rx={4} ry={4.5} fill="white" />
+      </g>
+      {/* curved upper lid */}
       <path
         d={`M ${cx - 20} 38 Q ${cx} 28 ${cx + 20} 38`}
-        fill={SKIN}
+        fill="none"
         stroke={INK}
         strokeWidth={3.5}
+        strokeLinecap="round"
       />
     </>
   );
