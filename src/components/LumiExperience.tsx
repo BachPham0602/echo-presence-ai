@@ -33,8 +33,8 @@ const VARIANT_STYLES: Record<
   playful: {
     name: "Lumi nhí nhảnh",
     background:
-      "radial-gradient(ellipse at 50% 30%, oklch(0.55 0.18 25 / 0.7), transparent 65%), linear-gradient(180deg, oklch(0.2 0.1 340), oklch(0.12 0.06 320))",
-    faceFilter: "none",
+      "radial-gradient(ellipse at 50% 28%, oklch(0.7 0.24 25 / 0.75), transparent 65%), linear-gradient(180deg, oklch(0.38 0.2 340), oklch(0.2 0.12 320))",
+    faceFilter: "saturate(1.25) brightness(1.1)",
   },
 };
 
