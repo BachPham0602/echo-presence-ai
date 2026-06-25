@@ -64,7 +64,7 @@ function Bubble({
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[82%] rounded-3xl px-5 py-3 text-[15px] font-medium leading-relaxed shadow-[0_10px_30px_-12px_rgba(0,20,60,0.55)] backdrop-blur-xl md:max-w-[52%] ${
+        className={`max-w-[92%] rounded-3xl px-5 py-3 text-[15px] font-medium leading-relaxed shadow-[0_10px_30px_-12px_rgba(0,20,60,0.55)] backdrop-blur-xl md:max-w-[68%] ${
           isUser
             ? "rounded-br-md border border-white/40 bg-white/95 text-slate-900"
             : "rounded-bl-md border border-slate-900/10 bg-slate-900/80 text-white"
