@@ -35,7 +35,7 @@ export function MessengerChat({ messages, interimTranscript, listening }: Messen
       style={{
         left: "50%",
         transform: "translateX(-50%)",
-        width: "min(88vw, 1000px)",
+        width: "min(96vw, 1200px)",
         bottom: "var(--lumi-chat-bottom, 140px)",
         height: "30vh",
         maxHeight: "320px",
