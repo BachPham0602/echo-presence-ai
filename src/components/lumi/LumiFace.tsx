@@ -71,7 +71,7 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.55 0.2 250 / 0.45), transparent 70%)",
+            "radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.72 0.22 250 / 0.6), transparent 70%)",
         }}
         aria-hidden
       />
