@@ -1,0 +1,3 @@
+[console_scripts]
+lumi-demo = lumi.demo_cli:main
+lumi-mvp = lumi.mvp_cli:main
