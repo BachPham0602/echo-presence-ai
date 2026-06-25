@@ -156,8 +156,61 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
             <Menu className="h-5 w-5" />
           </button>
         </div>
-        
+        <button
+          type="button"
+          onClick={() => setDevOpen((v) => !v)}
+          aria-label="Bảng test biểu cảm"
+          className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
+          title="Dev: Expression panel"
+        >
+          <Bug className="h-5 w-5" />
+        </button>
       </header>
+
+      {devOpen && (
+        <div className="absolute right-4 top-20 z-40 grid w-56 grid-cols-2 gap-1.5 rounded-2xl border border-white/15 bg-black/60 p-3 text-xs text-white backdrop-blur-md">
+          <div className="col-span-2 mb-1 flex items-center justify-between">
+            <span className="font-medium tracking-wide opacity-80">Expressions</span>
+            {override && (
+              <button
+                onClick={() => setOverride(null)}
+                className="rounded bg-white/10 px-2 py-0.5 hover:bg-white/20"
+              >
+                Auto
+              </button>
+            )}
+          </div>
+          {(
+            [
+              "neutral",
+              "happy",
+              "excited",
+              "laughing",
+              "playful",
+              "speaking",
+              "thinking",
+              "sad",
+              "angry",
+              "surprised",
+            ] as ExpressionName[]
+          ).map((name) => (
+            <button
+              key={name}
+              onClick={() => {
+                setOverride(name);
+                setExpression(name);
+              }}
+              className={`rounded-md px-2 py-1.5 text-left capitalize transition-colors ${
+                activeExpression === name
+                  ? "bg-white/25"
+                  : "bg-white/5 hover:bg-white/15"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
 
       <ConversationSidebar
         open={sidebarOpen}
