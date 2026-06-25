@@ -1,8 +1,8 @@
-import { useCallback, useState, type CSSProperties } from "react";
-import { Menu, ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { Menu, ArrowLeft, Bug } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-import { LumiCartoonFace } from "@/components/LumiCartoonFace";
+import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
 import { LumiKawaiiFace } from "@/components/LumiKawaiiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
@@ -13,6 +13,13 @@ import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { useLumiPipeline } from "@/hooks/useLumiPipeline";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useConversations } from "@/store/conversations";
+import {
+  expressionFromLumi,
+  getExpression,
+  setExpression,
+  subscribeExpression,
+  type ExpressionName,
+} from "@/components/lumi/ExpressionManager";
 
 export type LumiVariant = "calm" | "playful";
 
@@ -44,6 +51,23 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
     onMessage: (m) => conversations.appendMessage(m),
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
+  const [override, setOverride] = useState<ExpressionName | null>(null);
+
+  // Sync the global ExpressionManager with the pipeline's auto-detected state.
+  useEffect(() => {
+    setExpression(expressionFromLumi(pipeline.snapshot.expression));
+  }, [pipeline.snapshot.expression]);
+
+  // Subscribe to manual overrides from the dev panel / setExpression() calls.
+  const [managed, setManaged] = useState<ExpressionName>(() => getExpression());
+  useEffect(() => {
+    const unsub = subscribeExpression(setManaged);
+    return () => {
+      unsub();
+    };
+  }, []);
+  const activeExpression: ExpressionName = override ?? managed;
 
   const handleFinal = useCallback(
     (text: string) => {
@@ -106,7 +130,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
       >
         <div className={variant === "calm" ? "kawaii-bob h-full w-full" : "h-full w-full"}>
           {variant === "calm" ? (
-            <LumiCartoonFace expression={pipeline.snapshot.expression} />
+            <LumiCalmFace expression={activeExpression} />
           ) : (
             <LumiKawaiiFace expression={pipeline.snapshot.expression} />
           )}
@@ -132,8 +156,61 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
             <Menu className="h-5 w-5" />
           </button>
         </div>
-        
+        <button
+          type="button"
+          onClick={() => setDevOpen((v) => !v)}
+          aria-label="Bảng test biểu cảm"
+          className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
+          title="Dev: Expression panel"
+        >
+          <Bug className="h-5 w-5" />
+        </button>
       </header>
+
+      {devOpen && (
+        <div className="absolute right-4 top-20 z-40 grid w-56 grid-cols-2 gap-1.5 rounded-2xl border border-white/15 bg-black/60 p-3 text-xs text-white backdrop-blur-md">
+          <div className="col-span-2 mb-1 flex items-center justify-between">
+            <span className="font-medium tracking-wide opacity-80">Expressions</span>
+            {override && (
+              <button
+                onClick={() => setOverride(null)}
+                className="rounded bg-white/10 px-2 py-0.5 hover:bg-white/20"
+              >
+                Auto
+              </button>
+            )}
+          </div>
+          {(
+            [
+              "neutral",
+              "happy",
+              "excited",
+              "laughing",
+              "playful",
+              "speaking",
+              "thinking",
+              "sad",
+              "angry",
+              "surprised",
+            ] as ExpressionName[]
+          ).map((name) => (
+            <button
+              key={name}
+              onClick={() => {
+                setOverride(name);
+                setExpression(name);
+              }}
+              className={`rounded-md px-2 py-1.5 text-left capitalize transition-colors ${
+                activeExpression === name
+                  ? "bg-white/25"
+                  : "bg-white/5 hover:bg-white/15"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
 
       <ConversationSidebar
         open={sidebarOpen}
