@@ -104,21 +104,8 @@ export function LumiCartoonFace({ expression }: Props) {
           role="img"
           aria-label={`Lumi — ${mood}`}
         >
-          {/* Round cream head */}
-          <circle
-            cx={150}
-            cy={170}
-            r={140}
-            fill={SKIN}
-            stroke={SKIN_STROKE}
-            strokeWidth={4}
-          />
-          {/* Soft blush */}
-          <ellipse cx={60} cy={210} rx={22} ry={10} fill="#f4a3b5" opacity={0.55} />
-          <ellipse cx={240} cy={210} rx={22} ry={10} fill="#f4a3b5" opacity={0.55} />
-
-          {/* Feature tile — original 90x90 reference, scaled 2x, centered */}
-          <g transform="translate(60 60) scale(2)">
+          {/* Features only — no head, no blush. Tile is 90x90, scaled & centered. */}
+          <g transform="translate(37.5 57.5) scale(2.5)">
             {MOODS.map((m) => (
               <g
                 key={m}
