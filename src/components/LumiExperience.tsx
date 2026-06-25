@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { Menu, ArrowLeft, Bug } from "lucide-react";
+import { Menu, ArrowLeft, Smile } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
