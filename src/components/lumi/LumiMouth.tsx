@@ -6,86 +6,82 @@ interface LumiMouthProps {
   shape: MouthShape;
 }
 
+const DARK = "#020617";
+const TONGUE = "#f4849a";
+
 /**
- * Kawaii mouth shapes, mirroring the 9-expression reference sheet.
- * Open-mouth variants use a warm coral lip + bright tongue.
+ * Vector kawaii mouth shapes matching the 9-expression reference sheet.
  */
 export function LumiMouth({ cx, cy, shape }: LumiMouthProps) {
-  const stroke = "oklch(0.98 0.02 240)";
-  const lip = "oklch(0.32 0.16 18)"; // dark coral mouth interior
-  const tongue = "oklch(0.68 0.24 18)";
-
   switch (shape) {
     case "smile-small":
       return (
         <path
-          d={`M ${cx - 40} ${cy} q 40 30 80 0`}
-          stroke={stroke}
-          strokeWidth={10}
+          d={`M ${cx - 22} ${cy} Q ${cx} ${cy + 14} ${cx + 22} ${cy}`}
+          stroke={DARK}
+          strokeWidth={6}
           strokeLinecap="round"
           fill="none"
-          filter="url(#kawaii-glow)"
         />
       );
 
     case "smile-double":
-      // two side-by-side cute arcs ⌣⌣
       return (
-        <g stroke={stroke} strokeWidth={11} strokeLinecap="round" fill="none" filter="url(#kawaii-glow)">
-          <path d={`M ${cx - 70} ${cy + 4} q 28 32 56 0`} />
-          <path d={`M ${cx + 14} ${cy + 4} q 28 32 56 0`} />
+        <g stroke={DARK} strokeWidth={6} strokeLinecap="round" fill="none">
+          <path d={`M ${cx - 50} ${cy} Q ${cx - 25} ${cy + 22} ${cx} ${cy}`} />
+          <path d={`M ${cx} ${cy} Q ${cx + 25} ${cy + 22} ${cx + 50} ${cy}`} />
         </g>
       );
 
     case "smile-open": {
-      const w = 62;
+      const w = 46;
       return (
-        <path
-          d={`M ${cx - w} ${cy - 6} Q ${cx} ${cy + 50} ${cx + w} ${cy - 6} Q ${cx} ${cy + 4} ${cx - w} ${cy - 6} Z`}
-          fill={lip}
-          stroke={stroke}
-          strokeWidth={7}
-          strokeLinejoin="round"
-          filter="url(#kawaii-glow)"
-        />
+        <g>
+          <path
+            d={`M ${cx - w} ${cy - 4} Q ${cx} ${cy + 40} ${cx + w} ${cy - 4} Q ${cx} ${cy + 4} ${cx - w} ${cy - 4} Z`}
+            fill={DARK}
+            stroke={DARK}
+            strokeWidth={3}
+            strokeLinejoin="round"
+          />
+          <ellipse cx={cx + 6} cy={cy + 22} rx={16} ry={9} fill={TONGUE} />
+        </g>
       );
     }
 
     case "smile-big": {
-      const w = 82;
+      const w = 60;
       return (
         <g>
           <path
-            d={`M ${cx - w} ${cy - 8} Q ${cx} ${cy + 78} ${cx + w} ${cy - 8} Q ${cx} ${cy} ${cx - w} ${cy - 8} Z`}
-            fill={lip}
-            stroke={stroke}
-            strokeWidth={8}
+            d={`M ${cx - w} ${cy - 6} Q ${cx} ${cy + 60} ${cx + w} ${cy - 6} Q ${cx} ${cy + 2} ${cx - w} ${cy - 6} Z`}
+            fill={DARK}
+            stroke={DARK}
+            strokeWidth={3}
             strokeLinejoin="round"
-            filter="url(#kawaii-glow)"
           />
-          <ellipse cx={cx} cy={cy + 36} rx={32} ry={16} fill={tongue} opacity={0.95} />
+          <ellipse cx={cx} cy={cy + 30} rx={26} ry={14} fill={TONGUE} />
         </g>
       );
     }
 
     case "tongue": {
-      const w = 58;
+      const w = 44;
       return (
         <g>
           <path
-            d={`M ${cx - w} ${cy - 4} Q ${cx} ${cy + 40} ${cx + w} ${cy - 4} Q ${cx} ${cy + 2} ${cx - w} ${cy - 4} Z`}
-            fill={lip}
-            stroke={stroke}
-            strokeWidth={7}
+            d={`M ${cx - w} ${cy - 2} Q ${cx} ${cy + 34} ${cx + w} ${cy - 2} Q ${cx} ${cy + 4} ${cx - w} ${cy - 2} Z`}
+            fill={DARK}
+            stroke={DARK}
+            strokeWidth={3}
             strokeLinejoin="round"
-            filter="url(#kawaii-glow)"
           />
-          {/* tongue peeking out */}
+          {/* tongue sticking out lower right */}
           <path
-            d={`M ${cx - 24} ${cy + 20} Q ${cx} ${cy + 78} ${cx + 24} ${cy + 20} Q ${cx} ${cy + 34} ${cx - 24} ${cy + 20} Z`}
-            fill={tongue}
-            stroke={stroke}
-            strokeWidth={5}
+            d={`M ${cx + 6} ${cy + 18} Q ${cx + 30} ${cy + 50} ${cx + 38} ${cy + 28} Q ${cx + 24} ${cy + 16} ${cx + 6} ${cy + 18} Z`}
+            fill={TONGUE}
+            stroke={DARK}
+            strokeWidth={3}
             strokeLinejoin="round"
           />
         </g>
@@ -93,44 +89,38 @@ export function LumiMouth({ cx, cy, shape }: LumiMouthProps) {
     }
 
     case "ohh":
-      // surprised vertical oval mouth
       return (
         <g>
           <ellipse
             cx={cx}
-            cy={cy + 10}
-            rx={30}
-            ry={42}
-            fill={lip}
-            stroke={stroke}
-            strokeWidth={7}
-            filter="url(#kawaii-glow)"
+            cy={cy + 6}
+            rx={20}
+            ry={28}
+            fill={DARK}
           />
-          <ellipse cx={cx} cy={cy + 26} rx={20} ry={16} fill={tongue} />
+          <ellipse cx={cx} cy={cy + 18} rx={12} ry={10} fill={TONGUE} opacity={0.85} />
         </g>
       );
 
     case "frown":
       return (
         <path
-          d={`M ${cx - 46} ${cy + 26} q 46 -50 92 0`}
-          stroke={stroke}
-          strokeWidth={11}
+          d={`M ${cx - 30} ${cy + 16} Q ${cx} ${cy - 14} ${cx + 30} ${cy + 16}`}
+          stroke={DARK}
+          strokeWidth={6}
           strokeLinecap="round"
           fill="none"
-          filter="url(#kawaii-glow)"
         />
       );
 
     case "relaxed":
       return (
         <path
-          d={`M ${cx - 30} ${cy + 4} q 30 16 60 0`}
-          stroke={stroke}
-          strokeWidth={9}
+          d={`M ${cx - 22} ${cy + 2} Q ${cx} ${cy + 10} ${cx + 22} ${cy + 2}`}
+          stroke={DARK}
+          strokeWidth={5}
           strokeLinecap="round"
           fill="none"
-          filter="url(#kawaii-glow)"
         />
       );
 
@@ -138,12 +128,11 @@ export function LumiMouth({ cx, cy, shape }: LumiMouthProps) {
     case "wavy":
       return (
         <path
-          d={`M ${cx - 44} ${cy + 6} q 14 -16 28 0 t 28 0 t 28 0`}
-          stroke={stroke}
-          strokeWidth={9}
+          d={`M ${cx - 34} ${cy + 4} q 11 -12 22 0 t 22 0 t 22 0`}
+          stroke={DARK}
+          strokeWidth={5}
           strokeLinecap="round"
           fill="none"
-          filter="url(#kawaii-glow)"
         />
       );
 
