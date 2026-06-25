@@ -26,7 +26,7 @@ function LumiLanding() {
       className="fixed inset-0 overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at 50% 30%, oklch(0.32 0.14 260 / 0.85), transparent 65%), linear-gradient(180deg, oklch(0.1 0.05 260), oklch(0.06 0.03 265))",
+          "radial-gradient(ellipse at 50% 28%, oklch(0.6 0.22 255 / 0.8), transparent 65%), linear-gradient(180deg, oklch(0.24 0.15 260), oklch(0.12 0.08 265))",
       }}
     >
       <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 py-10">
@@ -45,7 +45,7 @@ function LumiLanding() {
             className="group glass-pill flex flex-col items-center gap-3 rounded-3xl px-6 py-8 text-center transition hover:scale-[1.02]"
             style={{
               background:
-                "linear-gradient(160deg, oklch(0.28 0.12 255 / 0.7), oklch(0.18 0.08 265 / 0.7))",
+                "linear-gradient(160deg, oklch(0.55 0.22 250 / 0.85), oklch(0.32 0.16 265 / 0.85))",
             }}
           >
             <div className="rounded-full bg-white/10 p-4">
@@ -62,7 +62,7 @@ function LumiLanding() {
             className="group glass-pill flex flex-col items-center gap-3 rounded-3xl px-6 py-8 text-center transition hover:scale-[1.02]"
             style={{
               background:
-                "linear-gradient(160deg, oklch(0.5 0.18 25 / 0.7), oklch(0.25 0.12 340 / 0.7))",
+                "linear-gradient(160deg, oklch(0.68 0.24 25 / 0.85), oklch(0.42 0.2 340 / 0.85))",
             }}
           >
             <div className="rounded-full bg-white/10 p-4">
