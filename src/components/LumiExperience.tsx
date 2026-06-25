@@ -1,8 +1,8 @@
-import { useCallback, useState, type CSSProperties } from "react";
-import { Menu, ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { Menu, ArrowLeft, Bug } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-import { LumiCartoonFace } from "@/components/LumiCartoonFace";
+import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
 import { LumiKawaiiFace } from "@/components/LumiKawaiiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
@@ -13,6 +13,13 @@ import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { useLumiPipeline } from "@/hooks/useLumiPipeline";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useConversations } from "@/store/conversations";
+import {
+  expressionFromLumi,
+  getExpression,
+  setExpression,
+  subscribeExpression,
+  type ExpressionName,
+} from "@/components/lumi/ExpressionManager";
 
 export type LumiVariant = "calm" | "playful";
 
