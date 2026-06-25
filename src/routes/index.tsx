@@ -62,7 +62,7 @@ function LumiLanding() {
             className="group glass-pill flex flex-col items-center gap-3 rounded-3xl px-6 py-8 text-center transition hover:scale-[1.02]"
             style={{
               background:
-                "linear-gradient(160deg, oklch(0.5 0.18 25 / 0.7), oklch(0.25 0.12 340 / 0.7))",
+                "linear-gradient(160deg, oklch(0.68 0.24 25 / 0.85), oklch(0.42 0.2 340 / 0.85))",
             }}
           >
             <div className="rounded-full bg-white/10 p-4">
