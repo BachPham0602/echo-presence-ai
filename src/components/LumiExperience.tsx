@@ -23,6 +23,21 @@ import {
 
 export type LumiVariant = "calm" | "playful";
 
+const EXPRESSION_TO_KAWAII: Record<ExpressionName, Kawaii> = {
+  neutral: "neutral",
+  happy: "happy",
+  excited: "excited",
+  laughing: "excited",
+  playful: "playful",
+  speaking: "happy",
+  thinking: "worried",
+  sad: "sad",
+  angry: "angry",
+  surprised: "surprised",
+  listening: "playful",
+};
+const expressionToKawaii = (e: ExpressionName): Kawaii => EXPRESSION_TO_KAWAII[e];
+
 interface LumiExperienceProps {
   variant: LumiVariant;
 }
