@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" width="300" height="200">
+  <defs><style>.eye{fill:#020617}.shine{fill:#fff}.blush{fill:#f4a3b5;opacity:.75}.mouth{fill:none;stroke:#020617;stroke-width:14;stroke-linecap:round;stroke-linejoin:round}.tongue{fill:#ff4d5a}</style></defs>
+<path class="mouth" d="M55 85 Q95 35 135 85"/><path class="mouth" d="M165 85 Q205 35 245 85"/><ellipse class="blush" cx="55" cy="125" rx="38" ry="14"/><ellipse class="blush" cx="245" cy="125" rx="38" ry="14"/><path d="M120 115 Q150 180 180 115 Z" fill="#020617"/><path class="tongue" d="M138 152 Q150 172 162 152 Z"/>
+</svg>
