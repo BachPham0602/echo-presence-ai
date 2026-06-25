@@ -66,7 +66,7 @@ export function LumiFace({ expression, showEars = true }: LumiFaceProps) {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 55% at 50% 38%, oklch(0.45 0.18 250 / 0.45), transparent 70%)",
+            "radial-gradient(ellipse 70% 55% at 50% 38%, oklch(0.62 0.22 250 / 0.55), transparent 70%)",
         }}
         aria-hidden
       />
@@ -74,7 +74,7 @@ export function LumiFace({ expression, showEars = true }: LumiFaceProps) {
         <svg
           viewBox="0 0 800 1000"
           preserveAspectRatio="xMidYMid meet"
-          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(80,140,255,0.35)]"
+          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(110,170,255,0.55)]"
           role="img"
           aria-label={`Lumi — ${expression}`}
         >
