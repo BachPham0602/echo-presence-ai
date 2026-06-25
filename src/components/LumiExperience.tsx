@@ -105,7 +105,11 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         }}
       >
         <div className={variant === "calm" ? "kawaii-bob h-full w-full" : "h-full w-full"}>
-          <LumiKawaiiFace expression={pipeline.snapshot.expression} />
+          {variant === "calm" ? (
+            <LumiCartoonFace expression={pipeline.snapshot.expression} />
+          ) : (
+            <LumiKawaiiFace expression={pipeline.snapshot.expression} />
+          )}
         </div>
       </div>
 
