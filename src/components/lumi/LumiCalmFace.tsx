@@ -86,6 +86,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Middle-right → neutral
   neutral: (
     <g>
+      <path d="M28 32 L62 32" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M88 32 L122 32" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="23" ry="25" fill="black" />
       <ellipse cx="37" cy="46" rx="7" ry="9" fill="white" />
       <ellipse cx="105" cy="55" rx="23" ry="25" fill="black" />
