@@ -26,7 +26,7 @@ function LumiLanding() {
       className="fixed inset-0 overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at 50% 30%, oklch(0.32 0.14 260 / 0.85), transparent 65%), linear-gradient(180deg, oklch(0.1 0.05 260), oklch(0.06 0.03 265))",
+          "radial-gradient(ellipse at 50% 28%, oklch(0.6 0.22 255 / 0.8), transparent 65%), linear-gradient(180deg, oklch(0.24 0.15 260), oklch(0.12 0.08 265))",
       }}
     >
       <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 py-10">
