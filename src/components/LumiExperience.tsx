@@ -3,7 +3,7 @@ import { Menu, ArrowLeft, Bug } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
-import { LumiKawaiiFace } from "@/components/LumiKawaiiFace";
+import { LumiKawaiiFace, type Kawaii } from "@/components/LumiKawaiiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
 import { MicButton } from "@/components/MicButton";
