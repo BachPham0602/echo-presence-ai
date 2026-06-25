@@ -1,0 +1,24 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Cài đặt các thư viện hệ thống cần thiết cho âm thanh (PortAudio, FFmpeg)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libportaudio2 \
+    portaudio19-dev \
+    git \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy mã nguồn và cấu hình
+COPY pyproject.toml README.md /app/
+COPY src/ /app/src/
+
+# Cài đặt dependency (bao gồm llm, tts, asr, audio)
+RUN pip install --no-cache-dir -e '.[llm,tts,asr,audio]'
+
+EXPOSE 8765
+
+# Chạy server
+CMD ["python", "-m", "lumi.web_app", "--host", "0.0.0.0", "--port", "8765"]

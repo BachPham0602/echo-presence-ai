@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumi-companion"
+version = "0.1.0"
+description = "Lumi - a Vietnamese voice companion demo scaffold"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+vad = ["silero-vad", "onnxruntime"]
+asr = ["transformers", "accelerate", "torch", "torchaudio", "soundfile"]
+llm = ["transformers", "accelerate", "torch"]
+tts = ["vieneu"]
+audio = ["sounddevice", "soundfile"]
+speaker = ["speechbrain", "torchaudio"]
+dev = ["pytest"]
+all-models = [
+    "transformers",
+    "accelerate",
+    "torch",
+    "torchaudio",
+    "soundfile",
+    "sounddevice",
+    "vieneu",
+]
+
+[project.scripts]
+lumi-demo = "lumi.demo_cli:main"
+lumi-mvp = "lumi.mvp_cli:main"
+lumi-web = "lumi.web_app:main"
+lumi-prefetch = "lumi.prefetch_models:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

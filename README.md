@@ -1,0 +1,238 @@
+# Lumi - Ánh sáng đồng hành
+
+Lumi là demo 5 ngày về một người bạn đồng hành bằng giọng nói cho người sống một mình. Bản hiện tại được tách thành hai luồng:
+
+- **MVP model-first**: nghe audio hoặc nhập text -> sinh phản hồi text bằng LLM -> sinh audio bằng TTS.
+- **Pipeline nghiên cứu cũ**: turn-taking/addressee/speaker/emotion heuristic để giữ chỗ cho các module sau này.
+
+## MVP hiện tại
+
+MVP ưu tiên chạy được đường chính trước:
+
+```text
+text hoặc audio
+  -> PhoWhisper ASR nếu là audio
+  -> Qwen2.5-7B-Instruct sinh phản hồi text
+  -> VieNeu-TTS sinh file wav
+```
+
+Các module `turn_detector`, `addressee_detector`, `speaker_verifier`, `emotion_classifier` **chưa chạy trong MVP**, nhưng đã có hook trong `LumiMvpPipeline` để tích hợp sau.
+
+## Cài dependency model
+
+```bash
+cd /home/ubuntu/Easy-Turn/hackathon
+python -m pip install -e '.[llm,tts,asr,audio]'
+```
+
+Nếu chỉ muốn test orchestration không tải model:
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --response-provider template --tts-provider no-audio --once "tôi buồn quá"
+```
+
+## Chạy MVP bằng text
+
+Dùng provider thật:
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --input text
+```
+
+Chạy một lượt rồi thoát:
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --once "Lumi ơi, hôm nay mình thấy hơi cô đơn."
+```
+
+
+
+
+
+## Chọn GPU
+
+Mặc định Lumi được cấu hình dùng GPU vật lý `1` để tránh GPU 0 đang bận. Cơ chế là đặt `CUDA_VISIBLE_DEVICES=1` trước khi load Torch/Transformers. Trong process Lumi, GPU vật lý 1 sẽ hiện thành `cuda:0`.
+
+Chạy web trên GPU 1:
+
+```bash
+PYTHONPATH=src python -m lumi.web_app --cuda-visible-devices 1 --port 8765
+```
+
+Hoặc bằng biến môi trường:
+
+```bash
+LUMI_CUDA_VISIBLE_DEVICES=1 PYTHONPATH=src python -m lumi.web_app --port 8765
+```
+
+Dùng GPU khác:
+
+```bash
+LUMI_CUDA_VISIBLE_DEVICES=2 PYTHONPATH=src python -m lumi.web_app --port 8765
+```
+
+Dùng nhiều GPU, ví dụ GPU 1 và 2:
+
+```bash
+LUMI_CUDA_VISIBLE_DEVICES=1,2 PYTHONPATH=src python -m lumi.web_app --port 8765
+```
+
+## Tải model trước
+
+Hugging Face chỉ tải model một lần vào cache local. Các lần chạy sau sẽ đọc lại từ disk; bạn vẫn thấy bước `Loading checkpoint shards`, nhưng đó là load model vào RAM/VRAM, không phải tải internet.
+
+Tải trước model ASR + LLM, và thử khởi tạo TTS:
+
+```bash
+cd /home/ubuntu/Easy-Turn/hackathon
+PYTHONPATH=src python -m lumi.prefetch_models --all
+```
+
+Chỉ tải PhoWhisper:
+
+```bash
+PYTHONPATH=src python -m lumi.prefetch_models --asr
+```
+
+Chỉ tải Qwen:
+
+```bash
+PYTHONPATH=src python -m lumi.prefetch_models --llm
+```
+
+Kiểm tra máy đã có cache chưa, không tải internet:
+
+```bash
+PYTHONPATH=src python -m lumi.prefetch_models --all --local-files-only
+```
+
+Cache mặc định nằm ở `~/.cache/huggingface/hub`. Có thể đổi vị trí bằng biến môi trường `HF_HOME` hoặc `HUGGINGFACE_HUB_CACHE`.
+
+Sau khi prefetch xong, có thể chạy offline hơn bằng:
+
+```bash
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src python -m lumi.web_app --port 8765
+```
+
+## Chạy web recorder
+
+Nếu server/VM không expose microphone cho Python, dùng browser để thu âm trực tiếp. Browser sẽ ghi WAV và gửi về backend Lumi.
+
+Chạy thử web không tải model:
+
+```bash
+cd /home/ubuntu/Easy-Turn/hackathon
+PYTHONPATH=src python -m lumi.web_app --response-provider template --tts-provider no-audio --port 8765
+```
+
+Chạy web với provider thật:
+
+```bash
+cd /home/ubuntu/Easy-Turn/hackathon
+PYTHONPATH=src python -m lumi.web_app --port 8765
+```
+
+Mở trang:
+
+```text
+http://127.0.0.1:8765
+```
+
+Nếu chạy trên máy remote/A100, hãy port-forward về localhost của máy bạn. Browser thường chỉ cho dùng microphone trên `localhost` hoặc HTTPS, nên mở qua IP HTTP thường có thể bị chặn quyền mic.
+
+Luồng web:
+
+```text
+browser microphone
+  -> browser encode WAV
+  -> POST /api/audio
+  -> PhoWhisper transcript
+  -> Qwen response text
+  -> VieNeu-TTS output wav
+  -> browser phát audio response
+```
+
+## Chạy MVP streaming microphone
+
+Streaming hiện tại là **continuous chunk streaming**: mic mở liên tục, mỗi chunk audio có độ dài cố định được lưu thành wav, đưa qua PhoWhisper, rồi Lumi sinh text + audio response.
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --input stream --chunk-seconds 5
+```
+
+Giới hạn số chunk để test nhanh:
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --input stream --chunk-seconds 5 --max-chunks 3
+```
+
+Lưu ý: mode này chưa dùng VAD/turn-taking. Mỗi chunk được xem như một lượt nói độc lập. Sau này có thể thay chunk boundary bằng Silero VAD + semantic VAD mà không đổi phần LLM/TTS phía sau.
+
+## Chạy MVP bằng audio file
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --input audio-file --audio /path/to/input.wav
+```
+
+## Chạy MVP bằng microphone
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --input mic --seconds 6
+```
+
+Output audio mặc định nằm trong `outputs/`.
+
+## Cấu trúc chính
+
+```text
+src/lumi/
+  mvp_cli.py          # CLI MVP model-first
+  mvp_pipeline.py     # text/audio -> LLM -> TTS
+  providers/asr.py    # PhoWhisper + microphone recorder
+  providers/llm.py    # Qwen local + template test provider
+  providers/tts.py    # VieNeu-TTS + no-audio test provider
+```
+
+## Ghi chú
+
+- PhoWhisper/VieNeu/Qwen sẽ chỉ được load khi provider tương ứng được gọi.
+- Nếu thiếu dependency, CLI sẽ báo câu lệnh cài đặt cần thiết.
+- Pipeline cũ `demo_cli.py` vẫn còn để thử logic turn/addressee/emotion heuristic, nhưng không phải luồng MVP chính nữa.
+
+## Troubleshooting microphone
+
+Nếu chạy `--input mic` hoặc `--input stream` và gặp lỗi:
+
+```text
+OSError: PortAudio library not found
+```
+
+nghĩa là Python package `sounddevice` đã được gọi, nhưng máy thiếu thư viện native PortAudio.
+
+Trong conda env `easyturn`, ưu tiên cài bằng conda-forge:
+
+```bash
+conda install -c conda-forge portaudio python-sounddevice pysoundfile
+```
+
+Hoặc trên Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libportaudio2 portaudio19-dev
+```
+
+Nếu chưa cần microphone, có thể chạy bằng text hoặc audio file để tránh PortAudio:
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --once "tôi buồn quá"
+PYTHONPATH=src python -m lumi.mvp_cli --input audio-file --audio /path/to/input.wav
+```
+
+
+## Audio device selection
+
+```bash
+PYTHONPATH=src python -m lumi.mvp_cli --list-audio-devices
+PYTHONPATH=src python -m lumi.mvp_cli --input stream --chunk-seconds 5 --device 0
+```
