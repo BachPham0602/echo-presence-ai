@@ -8,7 +8,7 @@ import type { ExpressionName } from "./ExpressionManager";
  * paints the facial features, fading smoothly between expressions.
  */
 
-const FACES: Record<ExpressionName, JSX.Element> = {
+const FACES: Record<ExpressionName, ReactElement> = {
   // Top-left of the reference grid
   happy: (
     <g>
