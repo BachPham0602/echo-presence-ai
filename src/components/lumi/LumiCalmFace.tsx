@@ -12,6 +12,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Top-left of the reference grid
   happy: (
     <g>
+      <path d="M28 30 Q45 22 60 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M90 30 Q105 22 122 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="22" ry="24" fill="black" />
       <ellipse cx="38" cy="48" rx="7" ry="9" fill="white" />
       <ellipse cx="36" cy="46" rx="3" ry="4" fill="white" opacity="0.8" />
@@ -39,6 +41,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Top-right → laughing (open mouth + happy tear)
   laughing: (
     <g>
+      <path d="M28 30 Q45 20 60 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M90 30 Q105 20 122 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="22" ry="24" fill="black" />
       <ellipse cx="38" cy="48" rx="7" ry="9" fill="white" />
       <ellipse cx="105" cy="55" rx="22" ry="24" fill="black" />
@@ -68,6 +72,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Middle-center → speaking (asymmetric wide eye + small "o")
   speaking: (
     <g>
+      <path d="M28 38 Q42 30 56 38" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M82 32 Q102 22 122 32" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="40" cy="60" rx="14" ry="15" fill="black" />
       <ellipse cx="34" cy="52" rx="5" ry="6" fill="white" />
       <ellipse cx="102" cy="57" rx="30" ry="31" fill="black" />
@@ -80,6 +86,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Middle-right → neutral
   neutral: (
     <g>
+      <path d="M28 32 L62 32" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M88 32 L122 32" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="23" ry="25" fill="black" />
       <ellipse cx="37" cy="46" rx="7" ry="9" fill="white" />
       <ellipse cx="105" cy="55" rx="23" ry="25" fill="black" />
@@ -117,6 +125,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Bottom-right → surprised (huge round eyes, open "o" mouth)
   surprised: (
     <g>
+      <path d="M26 26 Q45 16 62 26" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M88 26 Q105 16 124 26" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="26" ry="28" fill="black" />
       <ellipse cx="36" cy="44" rx="9" ry="11" fill="white" />
       <ellipse cx="105" cy="55" rx="26" ry="28" fill="black" />
