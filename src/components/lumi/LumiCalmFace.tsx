@@ -12,6 +12,8 @@ const FACES: Record<ExpressionName, ReactElement> = {
   // Top-left of the reference grid
   happy: (
     <g>
+      <path d="M28 30 Q45 22 60 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M90 30 Q105 22 122 30" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
       <ellipse cx="45" cy="55" rx="22" ry="24" fill="black" />
       <ellipse cx="38" cy="48" rx="7" ry="9" fill="white" />
       <ellipse cx="36" cy="46" rx="3" ry="4" fill="white" opacity="0.8" />
