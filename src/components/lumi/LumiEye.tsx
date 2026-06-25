@@ -104,13 +104,13 @@ function RoundEye({
   return (
     <g>
       {/* glow halo */}
-      <circle cx={cx} cy={cy} r={r + 6} fill="oklch(0.7 0.18 255 / 0.35)" filter="url(#kawaii-blur)" />
+      <circle cx={cx} cy={cy} r={r + 6} fill="oklch(0.8 0.22 255 / 0.55)" filter="url(#kawaii-blur)" />
       {/* main pupil */}
       <circle
         cx={cx}
         cy={cy}
         r={r}
-        fill="oklch(0.12 0.05 265)"
+        fill="oklch(0.22 0.14 260)"
         stroke="oklch(1 0 0)"
         strokeWidth={4}
         filter="url(#kawaii-glow)"
