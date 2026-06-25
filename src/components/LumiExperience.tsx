@@ -34,8 +34,8 @@ const VARIANT_STYLES: Record<
   calm: {
     name: "Lumi điềm tĩnh",
     background:
-      "radial-gradient(ellipse at 50% 28%, oklch(0.55 0.22 250 / 0.85), transparent 65%), linear-gradient(180deg, oklch(0.22 0.14 250), oklch(0.12 0.08 260))",
-    faceFilter: "saturate(1.25) brightness(1.1)",
+      "radial-gradient(ellipse at 50% 28%, oklch(0.78 0.26 250 / 0.95), transparent 65%), linear-gradient(180deg, oklch(0.42 0.2 250), oklch(0.22 0.13 260))",
+    faceFilter: "saturate(1.55) brightness(1.4)",
   },
   playful: {
     name: "Lumi nhí nhảnh",
