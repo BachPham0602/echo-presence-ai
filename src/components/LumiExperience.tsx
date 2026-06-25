@@ -49,13 +49,14 @@ const VARIANT_STYLES: Record<
   calm: {
     name: "Lumi điềm tĩnh",
     background:
-      "radial-gradient(ellipse at 50% 28%, oklch(0.78 0.26 250 / 0.95), transparent 65%), linear-gradient(180deg, oklch(0.42 0.2 250), oklch(0.22 0.13 260))",
+      "radial-gradient(ellipse at 50% 28%, oklch(0.9 0.2 230 / 0.95), transparent 65%), linear-gradient(180deg, oklch(0.78 0.18 235), oklch(0.6 0.18 265))",
     faceFilter: "saturate(1.55) brightness(1.4)",
   },
   playful: {
     name: "Lumi nhí nhảnh",
     background:
-      "radial-gradient(ellipse at 50% 28%, oklch(0.85 0.28 25 / 0.9), transparent 65%), linear-gradient(180deg, oklch(0.58 0.24 340), oklch(0.32 0.16 320))",
+      "radial-gradient(ellipse at 50% 28%, oklch(0.93 0.18 60 / 0.95), transparent 65%), linear-gradient(180deg, oklch(0.82 0.2 350), oklch(0.7 0.22 320))",
+
     faceFilter: "saturate(1.55) brightness(1.4)",
   },
 };
