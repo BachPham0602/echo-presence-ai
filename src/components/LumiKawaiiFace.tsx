@@ -9,7 +9,7 @@ import type { LumiExpression } from "@/types/emotion";
  * a random blink overlays the open-eyed expressions.
  */
 
-type Kawaii =
+export type Kawaii =
   | "happy"
   | "excited"
   | "playful"
@@ -61,10 +61,12 @@ function toKawaii(expr: LumiExpression): Kawaii {
 
 interface Props {
   expression: LumiExpression;
+  /** Optional direct override (from ExpressionManager dev panel etc.) */
+  moodOverride?: Kawaii;
 }
 
-export function LumiKawaiiFace({ expression }: Props) {
-  const mood = toKawaii(expression);
+export function LumiKawaiiFace({ expression, moodOverride }: Props) {
+  const mood = moodOverride ?? toKawaii(expression);
   const [blink, setBlink] = useState(false);
 
   useEffect(() => {

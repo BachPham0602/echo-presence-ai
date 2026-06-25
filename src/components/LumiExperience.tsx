@@ -3,7 +3,7 @@ import { Menu, ArrowLeft, Bug } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
-import { LumiKawaiiFace } from "@/components/LumiKawaiiFace";
+import { LumiKawaiiFace, type Kawaii } from "@/components/LumiKawaiiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
 import { MicButton } from "@/components/MicButton";
@@ -22,6 +22,21 @@ import {
 } from "@/components/lumi/ExpressionManager";
 
 export type LumiVariant = "calm" | "playful";
+
+const EXPRESSION_TO_KAWAII: Record<ExpressionName, Kawaii> = {
+  neutral: "neutral",
+  happy: "happy",
+  excited: "excited",
+  laughing: "excited",
+  playful: "playful",
+  speaking: "happy",
+  thinking: "worried",
+  sad: "sad",
+  angry: "angry",
+  surprised: "surprised",
+  listening: "playful",
+};
+const expressionToKawaii = (e: ExpressionName): Kawaii => EXPRESSION_TO_KAWAII[e];
 
 interface LumiExperienceProps {
   variant: LumiVariant;
@@ -129,7 +144,14 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         }}
       >
         <div className="kawaii-bob h-full w-full">
-          <LumiCalmFace expression={activeExpression} />
+          {variant === "calm" ? (
+            <LumiCalmFace expression={activeExpression} />
+          ) : (
+            <LumiKawaiiFace
+              expression={pipeline.snapshot.expression}
+              moodOverride={expressionToKawaii(activeExpression)}
+            />
+          )}
         </div>
       </div>
 
