@@ -40,26 +40,19 @@ function toKawaii(expr: LumiExpression): Kawaii {
       return "happy";
     case "excited":
       return "excited";
-    case "playful":
-      return "playful";
     case "sad":
       return "sad";
     case "concerned":
-    case "worried":
     case "thinking":
       return "worried";
     case "sleepy":
       return "sleepy";
-    case "surprised":
     case "confused":
       return "surprised";
-    case "wink":
-      return "wink";
-    case "angry":
-      return "angry";
     case "speaking":
       return "happy";
     case "listening":
+      return "playful";
     case "idle":
     default:
       return "neutral";
