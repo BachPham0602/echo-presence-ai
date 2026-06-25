@@ -1,0 +1,4 @@
+[run]
+dev = "cd echo-presence-ai && bun run dev"
+build = "cd echo-presence-ai && bun run build"
+"build:dev" = "cd echo-presence-ai && bun run build:dev"
