@@ -66,7 +66,7 @@ export function LumiFace({ expression, showEars = true }: LumiFaceProps) {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 55% at 50% 38%, oklch(0.45 0.18 250 / 0.45), transparent 70%)",
+            "radial-gradient(ellipse 70% 55% at 50% 38%, oklch(0.62 0.22 250 / 0.55), transparent 70%)",
         }}
         aria-hidden
       />
@@ -74,23 +74,23 @@ export function LumiFace({ expression, showEars = true }: LumiFaceProps) {
         <svg
           viewBox="0 0 800 1000"
           preserveAspectRatio="xMidYMid meet"
-          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(80,140,255,0.35)]"
+          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(110,170,255,0.55)]"
           role="img"
           aria-label={`Lumi — ${expression}`}
         >
           {/* Scale all facial features by 1.2× around the viewBox centre */}
           <g transform="translate(400, 500) scale(1.2) translate(-400, -500)">
           <defs>
-            {/* Glossy eye gradient — soft blue version of the reference */}
+            {/* Glossy eye gradient — brighter, fresher blue */}
             <radialGradient id="eye-fill" cx="50%" cy="30%" r="85%">
-              <stop offset="0%" stopColor="oklch(0.4 0.1 255)" />
-              <stop offset="55%" stopColor="oklch(0.22 0.08 260)" />
-              <stop offset="100%" stopColor="oklch(0.08 0.04 265)" />
+              <stop offset="0%" stopColor="oklch(0.6 0.18 250)" />
+              <stop offset="55%" stopColor="oklch(0.38 0.16 255)" />
+              <stop offset="100%" stopColor="oklch(0.18 0.1 260)" />
             </radialGradient>
             {/* Bottom inner glow — mimics the bright lower rim in the ref */}
             <radialGradient id="eye-rim" cx="50%" cy="100%" r="65%">
-              <stop offset="0%" stopColor="oklch(0.85 0.12 240 / 0.75)" />
-              <stop offset="60%" stopColor="oklch(0.85 0.12 240 / 0)" />
+              <stop offset="0%" stopColor="oklch(0.92 0.16 230 / 0.9)" />
+              <stop offset="60%" stopColor="oklch(0.92 0.16 230 / 0)" />
             </radialGradient>
             {/* Outline glow filter */}
             <filter id="outline-glow" x="-30%" y="-30%" width="160%" height="160%">
