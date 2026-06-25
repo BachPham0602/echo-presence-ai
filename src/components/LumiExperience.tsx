@@ -182,7 +182,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
           title="Dev: Expression panel"
         >
-          <Bug className="h-5 w-5" />
+          <Smile className="h-5 w-5" />
         </button>
       </header>
 
