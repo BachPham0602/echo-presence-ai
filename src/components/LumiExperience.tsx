@@ -51,6 +51,18 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
     onMessage: (m) => conversations.appendMessage(m),
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
+  const [override, setOverride] = useState<ExpressionName | null>(null);
+
+  // Sync the global ExpressionManager with the pipeline's auto-detected state.
+  useEffect(() => {
+    setExpression(expressionFromLumi(pipeline.snapshot.expression));
+  }, [pipeline.snapshot.expression]);
+
+  // Subscribe to manual overrides from the dev panel / setExpression() calls.
+  const [managed, setManaged] = useState<ExpressionName>(() => getExpression());
+  useEffect(() => subscribeExpression(setManaged), []);
+  const activeExpression: ExpressionName = override ?? managed;
 
   const handleFinal = useCallback(
     (text: string) => {
