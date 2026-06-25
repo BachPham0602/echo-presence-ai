@@ -69,9 +69,10 @@ function LumiLanding() {
               <Radio className="h-8 w-8 text-white" />
             </div>
 
-            <h2 className="text-xl font-semibold text-foreground">Live Chat</h2>
-            <p className="text-xs text-foreground/70 sm:text-sm">
+            <h2 className="text-xl font-semibold text-white">Live Chat</h2>
+            <p className="text-xs text-white/90 sm:text-sm">
               Trò chuyện cùng <strong>Lumi nhí nhảnh</strong> — vui tươi, năng động.
+
             </p>
           </Link>
         </div>
