@@ -4,8 +4,8 @@
   "scripts": {
     "postinstall": "cd echo-presence-ai && bun install",
     "dev": "cd echo-presence-ai && bun install && bun run dev",
-    "build": "cd echo-presence-ai && bun install && bun run build",
-    "build:dev": "cd echo-presence-ai && bun install && bun run build:dev",
+    "build": "cd echo-presence-ai && bun install && bun run build && cd .. && rm -rf dist && cp -r echo-presence-ai/dist dist",
+    "build:dev": "cd echo-presence-ai && bun install && bun run build:dev && cd .. && rm -rf dist && cp -r echo-presence-ai/dist dist",
     "preview": "cd echo-presence-ai && bun run preview"
   }
 }
