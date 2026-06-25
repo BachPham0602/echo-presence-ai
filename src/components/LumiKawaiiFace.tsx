@@ -9,7 +9,7 @@ import type { LumiExpression } from "@/types/emotion";
  * a random blink overlays the open-eyed expressions.
  */
 
-type Kawaii =
+export type Kawaii =
   | "happy"
   | "excited"
   | "playful"
