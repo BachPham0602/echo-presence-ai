@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import type { ExpressionName } from "./ExpressionManager";
 
 /**
