@@ -17,12 +17,13 @@ interface LumiFaceProps {
   preset?: KawaiiExpression;
 }
 
+const SKIN = "#F8EDE3";
+const SKIN_SHADOW = "#EBD9C5";
+
 /**
- * Kawaii/anime-style full-screen Lumi face for the "playful" variant.
- *
- * Modular: each feature (eye, brow, mouth, blush) is its own component and
- * is keyed by expression so React swaps them through a smooth fade. The
- * whole face also gently breathes and blinks for life.
+ * Vector-style kawaii Lumi face. A clean round cream head sits at the
+ * center of the viewBox; eyes, brows, mouth and blush are swapped per
+ * expression with a smooth fade. Subtle auto-blink keeps it alive.
  */
 export function LumiFace({ expression, preset }: LumiFaceProps) {
   const kawaii: KawaiiExpression = preset ?? kawaiiFromLumiExpression(expression);
@@ -44,15 +45,18 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
     };
   }, []);
 
-  // Eye / brow / mouth / blush coordinates (viewBox 800x1000)
-  const leftEyeCx = 270;
-  const rightEyeCx = 530;
-  const eyeCy = 400;
-  const browCy = 280;
-  const mouthCy = 580;
-  const blushCy = 510;
+  // Geometry inside viewBox 800x1000 — face circle centered at (400, 520)
+  const faceCx = 400;
+  const faceCy = 520;
+  const faceR = 280;
 
-  // Choose an idle motion based on the active preset
+  const leftEyeCx = faceCx - 90;
+  const rightEyeCx = faceCx + 90;
+  const eyeCy = faceCy - 30;
+  const browCy = eyeCy - 70;
+  const mouthCy = faceCy + 90;
+  const blushCy = faceCy + 40;
+
   const motionClass =
     kawaii === "excited"
       ? "kawaii-bounce"
@@ -66,66 +70,52 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
 
   return (
     <div className="absolute inset-0 h-full w-full">
-      {/* Soft ambient halo behind the face */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 70% 55% at 50% 42%, oklch(0.55 0.2 250 / 0.45), transparent 70%)",
-        }}
-        aria-hidden
-      />
       <div className={`${motionClass} absolute inset-0`}>
         <svg
           viewBox="0 0 800 1000"
           preserveAspectRatio="xMidYMid meet"
-          className="block h-full w-full drop-shadow-[0_30px_90px_rgba(120,160,255,0.45)]"
+          className="block h-full w-full drop-shadow-[0_25px_60px_rgba(120,80,200,0.35)]"
           role="img"
           aria-label={`Lumi kawaii — ${kawaii}`}
         >
           <defs>
-            <filter id="kawaii-glow" x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="2.5" result="b" />
-              <feMerge>
-                <feMergeNode in="b" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-            <filter id="kawaii-blur" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="8" />
-            </filter>
+            <radialGradient id="lumi-face-fill" cx="50%" cy="42%" r="62%">
+              <stop offset="0%" stopColor={SKIN} />
+              <stop offset="85%" stopColor={SKIN} />
+              <stop offset="100%" stopColor={SKIN_SHADOW} />
+            </radialGradient>
           </defs>
 
-          <g
-            transform="translate(400, 500) scale(1.3) translate(-400, -500)"
-            style={{ transition: "transform 0.8s ease" }}
-          >
+          <g style={{ transition: "transform 0.8s ease" }}>
+            {/* Head */}
+            <circle
+              cx={faceCx}
+              cy={faceCy}
+              r={faceR}
+              fill="url(#lumi-face-fill)"
+              stroke={SKIN_SHADOW}
+              strokeWidth={3}
+            />
+
+            {/* Blush */}
+            <g className="kawaii-blush-pulse">
+              <LumiBlush cx={leftEyeCx - 10} cy={blushCy} intensity={p.blush} />
+            </g>
+            <g className="kawaii-blush-pulse" style={{ animationDelay: "-1.3s" }}>
+              <LumiBlush cx={rightEyeCx + 10} cy={blushCy} intensity={p.blush} />
+            </g>
+
             {/* Eyebrows */}
-            <g style={{ transition: "opacity 0.35s ease" }} key={`brow-${p.brow}`}>
+            <g key={`brow-${p.brow}`} className="animate-fade-in">
               <LumiEyebrow side="left" cx={leftEyeCx} cy={browCy} shape={p.brow} />
               <LumiEyebrow side="right" cx={rightEyeCx} cy={browCy} shape={p.brow} />
             </g>
 
-            {/* Blush */}
-            <g className="kawaii-blush-pulse">
-              <LumiBlush cx={leftEyeCx - 20} cy={blushCy} intensity={p.blush} />
-            </g>
-            <g className="kawaii-blush-pulse" style={{ animationDelay: "-1.3s" }}>
-              <LumiBlush cx={rightEyeCx + 20} cy={blushCy} intensity={p.blush} />
-            </g>
-
-            {/* Eyes — keyed by shape so swaps animate */}
-            <g
-              key={`eye-l-${p.leftEye}-${blink}`}
-              className={`animate-fade-in ${kawaii === "excited" ? "kawaii-sparkle" : ""}`}
-            >
+            {/* Eyes */}
+            <g key={`eye-l-${p.leftEye}-${blink}`} className="animate-fade-in">
               <LumiEye cx={leftEyeCx} cy={eyeCy} shape={p.leftEye} side="left" blink={blink} />
             </g>
-            <g
-              key={`eye-r-${p.rightEye}-${blink}`}
-              className={`animate-fade-in ${kawaii === "excited" ? "kawaii-sparkle" : ""}`}
-              style={kawaii === "excited" ? { animationDelay: "-0.8s" } : undefined}
-            >
+            <g key={`eye-r-${p.rightEye}-${blink}`} className="animate-fade-in">
               <LumiEye cx={rightEyeCx} cy={eyeCy} shape={p.rightEye} side="right" blink={blink} />
             </g>
 
@@ -134,7 +124,7 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
               key={`mouth-${p.mouth}-${isTalking}`}
               className={`animate-fade-in ${isTalking ? "kawaii-mouth-talk" : ""}`}
             >
-              <LumiMouth cx={400} cy={mouthCy} shape={p.mouth} />
+              <LumiMouth cx={faceCx} cy={mouthCy} shape={p.mouth} />
             </g>
           </g>
         </svg>
@@ -142,4 +132,3 @@ export function LumiFace({ expression, preset }: LumiFaceProps) {
     </div>
   );
 }
-

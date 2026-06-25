@@ -8,130 +8,112 @@ interface LumiEyeProps {
   blink?: boolean;
 }
 
+const DARK = "#020617";
+
 /**
- * Kawaii eye — big shiny pupil with two white highlights, or a closed
- * upward arc (^^) for smile/wink shapes. Uses the Lumi blue glow theme.
+ * Vector-style kawaii eye. Filled dark shapes (#020617) with crisp white
+ * highlights — matches the reference SVG sheet (round / sparkle / wide /
+ * smile / wink / half / soft / worried).
  */
 export function LumiEye({ cx, cy, shape, side, blink }: LumiEyeProps) {
   const effective: EyeShape = blink ? "smile" : shape;
 
-  // Closed smiling arc — used for "smile" and the closed side of "wink-left"
-  if (effective === "smile") {
-    return (
-      <path
-        d={`M ${cx - 55} ${cy + 8} q 55 -50 110 0`}
-        stroke="oklch(0.97 0.02 240)"
-        strokeWidth={12}
-        strokeLinecap="round"
-        fill="none"
-        filter="url(#kawaii-glow)"
-      />
-    );
-  }
-
-  if (effective === "wink-left") {
-    // Wink uses the same closed arc, only applied to the left side
-    if (side === "left") {
-      return (
-        <path
-          d={`M ${cx - 55} ${cy + 8} q 55 -50 110 0`}
-          stroke="oklch(0.97 0.02 240)"
-          strokeWidth={12}
-          strokeLinecap="round"
-          fill="none"
-          filter="url(#kawaii-glow)"
-        />
+  switch (effective) {
+    case "smile":
+      return <ArcEye cx={cx} cy={cy} direction="up" />;
+    case "half":
+      return <ArcEye cx={cx} cy={cy + 4} direction="down" />;
+    case "wink-left":
+      return side === "left" ? (
+        <ArcEye cx={cx} cy={cy} direction="up" />
+      ) : (
+        <OvalEye cx={cx} cy={cy} side={side} />
       );
-    }
-    // Right side stays round
-    return <RoundEye cx={cx} cy={cy} side={side} sparkle={false} />;
+    case "worried":
+      return <WorriedEye cx={cx} cy={cy} side={side} />;
+    case "wide":
+      return <OvalEye cx={cx} cy={cy} side={side} variant="wide" />;
+    case "soft":
+      return <OvalEye cx={cx} cy={cy} side={side} variant="soft" />;
+    case "sparkle":
+      return <OvalEye cx={cx} cy={cy} side={side} sparkle />;
+    case "round":
+    default:
+      return <OvalEye cx={cx} cy={cy} side={side} />;
   }
-
-  if (effective === "half") {
-    // Sleepy half-lid: top half of the round eye
-    return (
-      <g>
-        <RoundEye cx={cx} cy={cy} side={side} sparkle={false} small />
-        <rect
-          x={cx - 70}
-          y={cy - 80}
-          width={140}
-          height={70}
-          fill="var(--lumi-bg, oklch(0.1 0.05 260))"
-        />
-        <path
-          d={`M ${cx - 58} ${cy - 8} q 58 28 116 0`}
-          stroke="oklch(0.97 0.02 240)"
-          strokeWidth={9}
-          strokeLinecap="round"
-          fill="none"
-          filter="url(#kawaii-glow)"
-        />
-      </g>
-    );
-  }
-
-  if (effective === "soft") {
-    return <RoundEye cx={cx} cy={cy} side={side} sparkle={false} small />;
-  }
-
-  if (effective === "sparkle") {
-    return <RoundEye cx={cx} cy={cy} side={side} sparkle />;
-  }
-
-  // round
-  return <RoundEye cx={cx} cy={cy} side={side} sparkle={false} />;
 }
 
-function RoundEye({
+function ArcEye({ cx, cy, direction }: { cx: number; cy: number; direction: "up" | "down" }) {
+  // direction "up" = ⌣ (happy closed-eye smile), "down" = ⌢ (sleepy droop)
+  const dy = direction === "up" ? -42 : 42;
+  return (
+    <path
+      d={`M ${cx - 42} ${cy} Q ${cx} ${cy + dy} ${cx + 42} ${cy}`}
+      stroke={DARK}
+      strokeWidth={10}
+      strokeLinecap="round"
+      fill="none"
+    />
+  );
+}
+
+function OvalEye({
   cx,
   cy,
   side,
   sparkle,
-  small,
+  variant,
 }: {
   cx: number;
   cy: number;
   side: "left" | "right";
-  sparkle: boolean;
-  small?: boolean;
+  sparkle?: boolean;
+  variant?: "soft" | "wide";
 }) {
-  const r = small ? 48 : 62;
-  const hl1x = side === "left" ? cx - 18 : cx + 22;
-  const hl1y = cy - 22;
-  const hl2x = side === "left" ? cx + 16 : cx - 14;
-  const hl2y = cy + 18;
+  const rx = variant === "wide" ? 38 : variant === "soft" ? 28 : 32;
+  const ry = variant === "wide" ? 50 : variant === "soft" ? 38 : 44;
+  const dir = side === "left" ? 1 : -1;
   return (
     <g>
-      {/* glow halo */}
-      <circle cx={cx} cy={cy} r={r + 6} fill="oklch(0.7 0.18 255 / 0.35)" filter="url(#kawaii-blur)" />
-      {/* main pupil */}
-      <circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        fill="oklch(0.12 0.05 265)"
-        stroke="oklch(1 0 0)"
-        strokeWidth={4}
-        filter="url(#kawaii-glow)"
+      <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={DARK} />
+      {/* primary highlight */}
+      <ellipse
+        cx={cx + 9 * dir}
+        cy={cy - ry * 0.42}
+        rx={rx * 0.34}
+        ry={ry * 0.28}
+        fill="#ffffff"
       />
-      {/* big highlight */}
-      <ellipse cx={hl1x} cy={hl1y} rx={r * 0.28} ry={r * 0.34} fill="oklch(1 0 0)" />
-      {/* small highlight */}
-      <circle cx={hl2x} cy={hl2y} r={r * 0.14} fill="oklch(1 0 0)" />
+      {/* secondary highlight */}
+      <circle cx={cx - 10 * dir} cy={cy + ry * 0.35} r={rx * 0.2} fill="#ffffff" />
       {sparkle && (
         <>
-          {/* watery shimmer along bottom */}
-          <ellipse
-            cx={cx}
-            cy={cy + r * 0.55}
-            rx={r * 0.7}
-            ry={r * 0.18}
-            fill="oklch(0.85 0.12 240 / 0.55)"
-          />
-          <circle cx={cx + r * 0.3} cy={cy + r * 0.35} r={4} fill="oklch(1 0 0)" />
+          <Sparkle cx={cx + rx + 10} cy={cy - ry * 0.2} size={8} />
+          <Sparkle cx={cx - rx - 6} cy={cy + ry * 0.5} size={5} />
         </>
       )}
     </g>
+  );
+}
+
+function WorriedEye({ cx, cy, side }: { cx: number; cy: number; side: "left" | "right" }) {
+  // Slanted squinted shape — small triangle-ish eye with single highlight
+  const dir = side === "left" ? 1 : -1;
+  const tilt = 12 * dir;
+  return (
+    <g transform={`rotate(${tilt} ${cx} ${cy})`}>
+      <ellipse cx={cx} cy={cy} rx={26} ry={18} fill={DARK} />
+      <circle cx={cx - 6 * dir} cy={cy - 4} r={5} fill="#ffffff" />
+    </g>
+  );
+}
+
+function Sparkle({ cx, cy, size }: { cx: number; cy: number; size: number }) {
+  const s = size;
+  return (
+    <path
+      d={`M ${cx} ${cy - s} L ${cx + s * 0.35} ${cy - s * 0.35} L ${cx + s} ${cy} L ${cx + s * 0.35} ${cy + s * 0.35} L ${cx} ${cy + s} L ${cx - s * 0.35} ${cy + s * 0.35} L ${cx - s} ${cy} L ${cx - s * 0.35} ${cy - s * 0.35} Z`}
+      fill="#ffffff"
+    />
   );
 }

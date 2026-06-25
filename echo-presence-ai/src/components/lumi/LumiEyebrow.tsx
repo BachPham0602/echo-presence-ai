@@ -3,50 +3,37 @@ import type { BrowShape } from "./expressionPresets";
 interface LumiEyebrowProps {
   side: "left" | "right";
   cx: number;
-  cy: number; // baseline y above the eye
+  cy: number;
   shape: BrowShape;
 }
 
-/**
- * Expressive eyebrow. The "raised-left" shape lifts only the left brow
- * (used for the "thinking" preset); "soft-down" sad-tilts the inner end
- * up; "soft-up" gives a cheerful arched lift.
- */
+const DARK = "#020617";
+
 export function LumiEyebrow({ side, cx, cy, shape }: LumiEyebrowProps) {
   if (shape === "none") return null;
-  const stroke = "oklch(0.97 0.02 240)";
-
-  const w = 80;
+  const w = 46;
   let d = "";
 
   if (shape === "raised-left") {
-    if (side === "left") {
-      // arched up
-      d = `M ${cx - w / 2} ${cy + 8} Q ${cx} ${cy - 26} ${cx + w / 2} ${cy + 4}`;
-    } else {
-      // flat soft curve
-      d = `M ${cx - w / 2} ${cy + 4} Q ${cx} ${cy - 6} ${cx + w / 2} ${cy + 4}`;
-    }
+    d = side === "left"
+      ? `M ${cx - w / 2} ${cy + 4} Q ${cx} ${cy - 14} ${cx + w / 2} ${cy + 2}`
+      : `M ${cx - w / 2} ${cy + 2} Q ${cx} ${cy - 4} ${cx + w / 2} ${cy + 2}`;
   } else if (shape === "soft-down") {
-    // inner end up, outer end down — concerned/sad
-    if (side === "left") {
-      d = `M ${cx - w / 2} ${cy + 16} Q ${cx} ${cy + 4} ${cx + w / 2} ${cy - 8}`;
-    } else {
-      d = `M ${cx - w / 2} ${cy - 8} Q ${cx} ${cy + 4} ${cx + w / 2} ${cy + 16}`;
-    }
+    // worried/sad: inner end up, outer end down
+    d = side === "left"
+      ? `M ${cx - w / 2} ${cy + 12} Q ${cx} ${cy + 2} ${cx + w / 2} ${cy - 6}`
+      : `M ${cx - w / 2} ${cy - 6} Q ${cx} ${cy + 2} ${cx + w / 2} ${cy + 12}`;
   } else if (shape === "soft-up") {
-    // cheerful arch up on both sides
-    d = `M ${cx - w / 2} ${cy + 6} Q ${cx} ${cy - 16} ${cx + w / 2} ${cy + 6}`;
+    d = `M ${cx - w / 2} ${cy + 4} Q ${cx} ${cy - 10} ${cx + w / 2} ${cy + 4}`;
   }
 
   return (
     <path
       d={d}
-      stroke={stroke}
-      strokeWidth={10}
+      stroke={DARK}
+      strokeWidth={6}
       strokeLinecap="round"
       fill="none"
-      filter="url(#kawaii-glow)"
     />
   );
 }

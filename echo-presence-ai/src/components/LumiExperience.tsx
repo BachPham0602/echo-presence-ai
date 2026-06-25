@@ -1,9 +1,9 @@
-import { useCallback, useState, type CSSProperties } from "react";
-import { Menu, ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { Menu, ArrowLeft, Smile } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-import { LumiFace } from "@/components/LumiFace";
-import { LumiFace as LumiKawaiiFace } from "@/components/lumi/LumiFace";
+import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
+import { LumiKawaiiFace, type Kawaii } from "@/components/LumiKawaiiFace";
 import { MessengerChat } from "@/components/MessengerChat";
 import { ChatComposer } from "@/components/ChatComposer";
 import { MicButton } from "@/components/MicButton";
@@ -13,8 +13,30 @@ import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { useLumiPipeline } from "@/hooks/useLumiPipeline";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useConversations } from "@/store/conversations";
+import {
+  expressionFromLumi,
+  getExpression,
+  setExpression,
+  subscribeExpression,
+  type ExpressionName,
+} from "@/components/lumi/ExpressionManager";
 
 export type LumiVariant = "calm" | "playful";
+
+const EXPRESSION_TO_KAWAII: Record<ExpressionName, Kawaii> = {
+  neutral: "neutral",
+  happy: "happy",
+  excited: "excited",
+  laughing: "excited",
+  playful: "playful",
+  speaking: "happy",
+  thinking: "worried",
+  sad: "sad",
+  angry: "angry",
+  surprised: "surprised",
+  listening: "playful",
+};
+const expressionToKawaii = (e: ExpressionName): Kawaii => EXPRESSION_TO_KAWAII[e];
 
 interface LumiExperienceProps {
   variant: LumiVariant;
@@ -27,14 +49,15 @@ const VARIANT_STYLES: Record<
   calm: {
     name: "Lumi điềm tĩnh",
     background:
-      "radial-gradient(ellipse at 50% 30%, oklch(0.28 0.12 255 / 0.9), transparent 65%), linear-gradient(180deg, oklch(0.1 0.05 260), oklch(0.06 0.03 265))",
-    faceFilter: "none",
+      "radial-gradient(ellipse at 50% 28%, oklch(0.9 0.2 230 / 0.95), transparent 65%), linear-gradient(180deg, oklch(0.78 0.18 235), oklch(0.6 0.18 265))",
+    faceFilter: "saturate(1.55) brightness(1.4)",
   },
   playful: {
     name: "Lumi nhí nhảnh",
     background:
-      "radial-gradient(ellipse at 50% 30%, oklch(0.55 0.18 25 / 0.7), transparent 65%), linear-gradient(180deg, oklch(0.2 0.1 340), oklch(0.12 0.06 320))",
-    faceFilter: "none",
+      "radial-gradient(ellipse at 50% 28%, oklch(0.93 0.18 60 / 0.95), transparent 65%), linear-gradient(180deg, oklch(0.82 0.2 350), oklch(0.7 0.22 320))",
+
+    faceFilter: "saturate(1.55) brightness(1.4)",
   },
 };
 
@@ -44,6 +67,23 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
     onMessage: (m) => conversations.appendMessage(m),
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
+  const [override, setOverride] = useState<ExpressionName | null>(null);
+
+  // Sync the global ExpressionManager with the pipeline's auto-detected state.
+  useEffect(() => {
+    setExpression(expressionFromLumi(pipeline.snapshot.expression));
+  }, [pipeline.snapshot.expression]);
+
+  // Subscribe to manual overrides from the dev panel / setExpression() calls.
+  const [managed, setManaged] = useState<ExpressionName>(() => getExpression());
+  useEffect(() => {
+    const unsub = subscribeExpression(setManaged);
+    return () => {
+      unsub();
+    };
+  }, []);
+  const activeExpression: ExpressionName = override ?? managed;
 
   const handleFinal = useCallback(
     (text: string) => {
@@ -104,11 +144,14 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           filter: style.faceFilter,
         }}
       >
-        <div className={variant === "calm" ? "kawaii-bob h-full w-full" : "h-full w-full"}>
-          {variant === "playful" ? (
-            <LumiKawaiiFace expression={pipeline.snapshot.expression} />
+        <div className="kawaii-bob h-full w-full">
+          {variant === "calm" ? (
+            <LumiCalmFace expression={activeExpression} />
           ) : (
-            <LumiFace expression={pipeline.snapshot.expression} showEars={false} />
+            <LumiKawaiiFace
+              expression={pipeline.snapshot.expression}
+              moodOverride={expressionToKawaii(activeExpression)}
+            />
           )}
         </div>
       </div>
@@ -131,7 +174,61 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
             <Menu className="h-5 w-5" />
           </button>
         </div>
+        <button
+          type="button"
+          onClick={() => setDevOpen((v) => !v)}
+          aria-label="Bảng test biểu cảm"
+          className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
+          title="Dev: Expression panel"
+        >
+          <Smile className="h-5 w-5" />
+        </button>
       </header>
+
+      {devOpen && (
+        <div className="absolute right-4 top-20 z-40 grid w-56 grid-cols-2 gap-1.5 rounded-2xl border border-white/15 bg-black/60 p-3 text-xs text-white backdrop-blur-md">
+          <div className="col-span-2 mb-1 flex items-center justify-between">
+            <span className="font-medium tracking-wide opacity-80">Expressions</span>
+            {override && (
+              <button
+                onClick={() => setOverride(null)}
+                className="rounded bg-white/10 px-2 py-0.5 hover:bg-white/20"
+              >
+                Auto
+              </button>
+            )}
+          </div>
+          {(
+            [
+              "neutral",
+              "happy",
+              "excited",
+              "laughing",
+              "playful",
+              "speaking",
+              "thinking",
+              "sad",
+              "angry",
+              "surprised",
+            ] as ExpressionName[]
+          ).map((name) => (
+            <button
+              key={name}
+              onClick={() => {
+                setOverride(name);
+                setExpression(name);
+              }}
+              className={`rounded-md px-2 py-1.5 text-left capitalize transition-colors ${
+                activeExpression === name
+                  ? "bg-white/25"
+                  : "bg-white/5 hover:bg-white/15"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
 
       <ConversationSidebar
         open={sidebarOpen}
