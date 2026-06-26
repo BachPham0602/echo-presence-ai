@@ -1,17 +1,28 @@
-version: '3.8'
-
 services:
   lumi-backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
+      additional_contexts:
+        vizipvoice: ../ViZipvoice
     ports:
       - "8765:8765"
+    environment:
+      LUMI_OUTPUT_DIR: /app/outputs
+      LUMI_OWNER_VOICE_DIR: /app/owner_voices
+      LUMI_CUDA_VISIBLE_DEVICES: "${LUMI_CUDA_VISIBLE_DEVICES:-0}"
+      LUMI_TTS_PROVIDER: "${LUMI_TTS_PROVIDER:-zipvoice}"  #edge-tts hoặc zipvoice
+      LUMI_TTS_VOICE: "${LUMI_TTS_VOICE:-vi-VN-HoaiMyNeural}"
+      LUMI_TTS_REFERENCE_SPEAKER: "${LUMI_TTS_REFERENCE_SPEAKER:-Uyên}"
+      LUMI_TTS_REFERENCE_WAV: "${LUMI_TTS_REFERENCE_WAV:-}"
+      LUMI_TTS_REFERENCE_TEXT: "${LUMI_TTS_REFERENCE_TEXT:-}"
+      LUMI_OWNER_NAME: "${LUMI_OWNER_NAME:-Uyên}"
+      PYTHONUNBUFFERED: "1"
     volumes:
       - ./outputs:/app/outputs
       - ./owner_voices:/app/owner_voices
       # Chia sẻ cache của HuggingFace để không phải tải lại model
-      - ~/.cache/huggingface:/root/.cache/huggingface 
+      - ~/.cache/huggingface:/root/.cache/huggingface
     deploy:
       resources:
         reservations:

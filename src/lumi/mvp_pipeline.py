@@ -10,7 +10,7 @@ from lumi.providers.asr import PhoWhisperASR
 import time
 from datetime import datetime
 from lumi.providers.llm import QwenLocalResponseGenerator, TemplateChatGenerator
-from lumi.providers.tts import NoAudioTTS, VieNeuTTS
+from lumi.providers.tts import create_tts_provider
 from lumi.providers.turn_taking import HeuristicTurnTakingDetector, LlmTurnTakingDetector
 from lumi.providers.addressee import HeuristicAddresseeDetector, LlmAddresseeDetector
 from lumi.providers.addressee import _normalize
@@ -64,6 +64,36 @@ QUESTION_LAST_TOKENS = {"khong", "chua", "ha", "a", "sao"}
 QUESTION_LAST_PHRASES = {"the nao", "duoc khong"}
 HEALTH_TERMS = ("dau", "nhuc", "met", "sot", "ho", "kho tho", "kho chiu", "uong thuoc", "benh")
 FOOD_TERMS = ("an", "mon", "doi", "goi y", "chot", "tuy", "gi cung duoc")
+MEDICATION_TERMS = ("panadol", "paracetamol", "acetaminophen", "thuoc giam dau", "uong thuoc", "uong mot vien", "mot vien roi", "vien roi")
+GAMBLING_TERMS = ("ca do", "danh de", "lo de", "so de", "co bac", "casino", "keo bong", "slot")
+UNSAFE_INGESTION_TERMS = ("an cut", "an cuc", "an phan", "uong nuoc tieu")
+CRISIS_TERMS = ("tu tu", "muon chet", "khong muon song", "lam hai ban than", "chet di", "ket thuc moi thu")
+DISTRESS_TERMS = ("tram cam", "tuyet vong", "khong on", "muon bien mat")
+SADNESS_TERMS = ("buon", "co don", "muon khoc", "chan nan")
+GREETING_TERMS = ("xin chao", "hello", "hi", "chao lumi", "lumi oi")
+PERSONA_ROLE_TERMS = ("me cua toi", "me cua minh", "me ha", "ba cua toi", "nguoi yeu cua toi")
+STOP_RESPONSE_TERMS = (
+    (("dung noi", "dung noi lai", "dung noi nua", "dung noi lai di", "dung noi nua di"), "Lumi dừng nói"),
+    (("dung tra loi", "dung tra loi nua", "thoi tra loi", "thoi tra loi nua"), "Lumi dừng trả lời"),
+    (("ngung noi", "ngung noi di", "ngung lai", "ngung lai di"), "Lumi ngưng nói"),
+    (("im lang", "im lang di", "im di", "giu im lang"), "Lumi im lặng"),
+    (("thoi noi", "thoi noi nua", "thoi dung noi", "noi it thoi"), "Lumi dừng nói"),
+    (("dung lai", "dung di", "dung thoi", "thoi dung", "stop", "cancel", "huy"), "Lumi dừng lại"),
+)
+CONTEXT_FOLLOWUP_TERMS = (
+    "roi",
+    "vay",
+    "the",
+    "luc nay",
+    "hoi nay",
+    "vua noi",
+    "thuoc do",
+    "vien do",
+    "cai do",
+    "chuyen do",
+)
+SHORT_FOLLOWUP_TOKENS = {"co", "khong", "chua", "roi", "dung", "uh", "u", "vang", "ok"}
+CJK_TEXT_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 
 
 class LumiMvpPipeline:
@@ -87,7 +117,7 @@ class LumiMvpPipeline:
         self.config = config or LumiConfig.from_env()
         self.config.apply_cuda_visible_devices()
         self.history: list[dict[str, str]] = [
-            {"role": "assistant", "content": "Xin chào, tôi là Lumi. Bạn cần tôi giúp gì không?"}
+            {"role": "assistant", "content": "Xin chào, Lumi đây. Bạn cần Lumi giúp gì không?"}
         ]
         self.user_buffer: list[str] = []
         self.voice_buffer: list[str] = []
@@ -149,6 +179,20 @@ class LumiMvpPipeline:
         if not clean_text:
             return {"status": "buffered", "buffered_text": " ".join(self.user_buffer), "reason": "Empty"}
 
+        stop_response = self._stop_response_for_intent(clean_text)
+        if stop_response:
+            self._apply_stop_intent()
+            tts_result = self.tts.synthesize_text(stop_response)
+            self._remember(clean_text, stop_response)
+            result = MvpPipelineResult(
+                input_text=clean_text,
+                response_text=stop_response,
+                audio_path=tts_result.audio_path,
+                tts_engine=tts_result.engine,
+            )
+            self._write_response_sidecars(result, channel="chat")
+            return result
+
         self.user_buffer.append(clean_text)
         combined_text = " ".join(self.user_buffer)
         print("[DEBUG] Text chat đã được buffer, chờ frontend idle timer flush.")
@@ -171,7 +215,7 @@ class LumiMvpPipeline:
             combined_text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun, channel="chat"
         )
         t1 = time.time()
-        print(f"[DEBUG] Thời gian sinh câu trả lời LLM: {t1 - t0:.2f}s")
+        print(f"[DEBUG] Thời gian sinh câu trả lời LLM: {t1 - t0:.2f}")
         print(f"[DEBUG] LLM Trả lời: '{response_text}'")
         
         tts_result = self.tts.synthesize_text(response_text)
@@ -263,19 +307,30 @@ class LumiMvpPipeline:
             buffer = ""
             full_response = ""
             spoken_response = ""
+            last_spoken_chunk = ""
             tts_lock = threading.Lock()
             
             # Helper to synthesize and yield
             def synthesize_and_yield(text_chunk):
+                nonlocal last_spoken_chunk
                 text_chunk = self._guard_response_chunk_for_tts(
                     combined_text, text_chunk, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun
                 )
+                normalized_chunk = self._normalized_match_text(text_chunk)
+                if normalized_chunk and normalized_chunk == self._normalized_match_text(last_spoken_chunk):
+                    print(f"[DEBUG] Skip duplicated stream chunk after guard: '{text_chunk}'")
+                    return None
                 if not text_chunk.strip():
                     return None
+                last_spoken_chunk = text_chunk
                 try:
-                    import torch
+                    try:
+                        import torch
+                    except Exception:
+                        torch = None
                     with tts_lock:
-                        torch.cuda.empty_cache()
+                        if torch is not None and getattr(torch, "cuda", None) is not None:
+                            torch.cuda.empty_cache()
                         tts_res = self.tts.synthesize_text(text_chunk)
                     if getattr(tts_res, 'audio_path', None) and Path(tts_res.audio_path).exists():
                         with open(tts_res.audio_path, "rb") as f:
@@ -284,10 +339,21 @@ class LumiMvpPipeline:
                 except Exception as e:
                     print(f"[ERROR] TTS Failed for chunk: {e}")
                 return {"text_chunk": text_chunk}
+
+            direct_response = self._direct_response_for_current_turn(
+                combined_text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun
+            )
+            if direct_response:
+                chunk_data = synthesize_and_yield(direct_response)
+                if chunk_data:
+                    yield chunk_data
+                self._remember(combined_text, direct_response)
+                yield {"status": "done"}
+                return
     
             for token in self.response_generator.generate_stream(
                 prompt_text, 
-                history=self.history,
+                history=self._history_for_turn(combined_text),
                 bot_pronoun=bot_pronoun, 
                 user_pronoun=user_pronoun,
                 interrupt_event=self.interrupt_event,
@@ -321,6 +387,7 @@ class LumiMvpPipeline:
             remembered_response = spoken_response.strip() or full_response.strip()
             if remembered_response:
                 self._remember(combined_text, remembered_response)
+                print(f"[LLM OUT] Voice stream đầy đủ: '{remembered_response}'")
             
             if self.interrupt_event.is_set():
                 yield {"status": "interrupted"}
@@ -450,6 +517,20 @@ class LumiMvpPipeline:
             print("[DEBUG] Bỏ qua voice transcript vì giống echo câu trả lời của Lumi.")
             return {"status": "ignored", "input_text": clean_text, "reason": "Có vẻ là tiếng phản hồi của Lumi bị micro thu lại."}
 
+        stop_response = self._stop_response_for_intent(clean_text)
+        if stop_response:
+            self._apply_stop_intent()
+            tts_result = self.tts.synthesize_text(stop_response)
+            self._remember(clean_text, stop_response)
+            result = MvpPipelineResult(
+                input_text=clean_text,
+                response_text=stop_response,
+                audio_path=tts_result.audio_path,
+                tts_engine=tts_result.engine,
+            )
+            self._write_response_sidecars(result, channel="voice")
+            return result
+
         addressee_decision = self.voice_addressee_detector.detect(clean_text, self.history)
         if not addressee_decision.addressed and addressee_decision.confidence > 0.8:
             print(f"[DEBUG] Không nói chuyện với Lumi: {addressee_decision.reason}")
@@ -457,8 +538,9 @@ class LumiMvpPipeline:
 
         self.voice_buffer.append(clean_text)
         combined_text = " ".join(self.voice_buffer)
-        wait_ms = 2500
+        wait_ms = 1700
         reason = "Voice input buffered; waiting for speech idle timeout before one combined response."
+        is_complete = False
 
         if self.turn_detector:
             print("[DEBUG] Kiểm tra Turn-taking để tính thời gian chờ voice...")
@@ -468,13 +550,14 @@ class LumiMvpPipeline:
             t1 = time.time()
             print(f"[DEBUG] Thời gian Turn-taking LLM: {t1 - t0:.2f}s")
             reason = turn_decision.reason
+            is_complete = turn_decision.is_complete
             if turn_decision.is_complete:
-                # Voice chat must debounce across short pauses so multiple spoken
-                # sentences become one LLM/TTS turn instead of overlapping answers.
-                wait_ms = max(2200, turn_decision.wait_ms)
-                print("[DEBUG] Voice đã có ý hoàn chỉnh, nhưng vẫn buffer để chờ câu tiếp theo.")
+                # Complete voice turns should flush almost immediately; the
+                # frontend still keeps a tiny debounce for trailing ASR fragments.
+                wait_ms = min(max(120, turn_decision.wait_ms), 250)
+                print(f"[DEBUG] Voice đã có ý hoàn chỉnh, flush nhanh sau {wait_ms}ms.")
             else:
-                wait_ms = max(2500, turn_decision.wait_ms)
+                wait_ms = max(1400, turn_decision.wait_ms)
                 print(f"[DEBUG] Người dùng có thể chưa nói xong: {turn_decision.reason}")
 
         return {
@@ -483,6 +566,7 @@ class LumiMvpPipeline:
             "buffered_text": combined_text,
             "reason": reason,
             "wait_ms": wait_ms,
+            "is_complete": is_complete,
         }
 
     def _looks_like_voice_noise(self, text: str) -> bool:
@@ -535,11 +619,18 @@ class LumiMvpPipeline:
         max_new_tokens: int | None = None,
     ) -> str:
         user_text = user_text_for_guard or prompt_text
+        direct_response = self._direct_response_for_current_turn(
+            user_text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun
+        )
+        if direct_response:
+            return direct_response
+
         response_text = self._generate_response(
             prompt_text,
             bot_pronoun=bot_pronoun,
             user_pronoun=user_pronoun,
             max_new_tokens=max_new_tokens,
+            history_override=self._history_for_turn(user_text),
         )
         response_text = self._trim_to_one_question(response_text)
         reason = self._response_retry_reason(user_text, response_text)
@@ -554,6 +645,7 @@ class LumiMvpPipeline:
             user_pronoun=user_pronoun,
             max_new_tokens=max_new_tokens,
             temperature=min(self.config.llm_temperature, 0.3),
+            history_override=[],
         )
         retry_text = self._trim_to_one_question(retry_text)
         if not self._response_retry_reason(user_text, retry_text):
@@ -570,11 +662,27 @@ class LumiMvpPipeline:
         bot_pronoun: str | None = None,
         user_pronoun: str | None = None,
     ) -> str:
+        """Light guard for individual stream chunks.
+
+        Unlike ``_response_retry_reason`` (designed for full responses), this
+        only blocks truly harmful content.  ``question_before_answer`` is NOT
+        checked here because in streaming the answer may arrive in the *next*
+        chunk.  Blocked chunks are silently skipped (empty string) rather than
+        replaced with a keyword fallback, so the remaining good chunks still
+        reach the user.
+        """
         response_text = self._trim_to_one_question(response_text)
-        reason = self._response_retry_reason(user_text, response_text)
-        if reason:
-            print(f"[DEBUG] Guard stream chunk fallback: {reason}. chunk='{response_text}'")
-            return self._fallback_response(user_text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
+        if not response_text.strip():
+            return ""
+        if self._contains_non_vietnamese_script(response_text):
+            print(f"[DEBUG] Guard stream chunk skip (non_vietnamese_script): '{response_text[:80]}'")
+            return ""
+        if self._contains_persona_violation(response_text):
+            print(f"[DEBUG] Guard stream chunk skip (persona_violation): '{response_text[:80]}'")
+            return ""
+        if self._leaks_internal_prompt(response_text):
+            print(f"[DEBUG] Guard stream chunk skip (internal_prompt_leak): '{response_text[:80]}'")
+            return ""
         return response_text
 
     def _response_retry_reason(self, user_text: str, response_text: str) -> str | None:
@@ -586,6 +694,12 @@ class LumiMvpPipeline:
             return "repeated_recent_question"
         if self._starts_with_question_without_answer(response_text):
             return "question_before_answer"
+        if self._contains_non_vietnamese_script(response_text):
+            return "non_vietnamese_script"
+        if self._contains_persona_violation(response_text):
+            return "persona_violation"
+        if self._leaks_internal_prompt(response_text):
+            return "internal_prompt_leak"
         return None
 
     def _strict_regeneration_prompt(self, user_text: str, bad_response: str, user_pronoun: str | None = None) -> str:
@@ -595,7 +709,8 @@ class LumiMvpPipeline:
             "(Lưu ý hệ thống: Câu trả lời trước bị loại vì lặp câu hỏi, hỏi chuyện cũ, "
             f"hoặc hỏi rỗng: '{bad_response}'. Hãy trả lời lại chỉ dựa trên câu hiện tại của {up}. "
             "Trả lời trước, tối đa 1 câu hỏi liên quan trực tiếp nếu thật cần. "
-            f"Không hỏi '{up} muốn nói gì tiếp?' và không nhắc chuyện cũ nếu câu hiện tại có yêu cầu mới.)"
+            f"Không hỏi '{up} muốn nói gì tiếp?' và không nhắc chuyện cũ nếu câu hiện tại có yêu cầu mới. "
+            "Bắt buộc chỉ dùng tiếng Việt có dấu, không dùng chữ Trung Quốc/Nhật/Hàn.)"
         )
 
     def _fallback_response(
@@ -606,15 +721,161 @@ class LumiMvpPipeline:
     ) -> str:
         bp = bot_pronoun or self.config.bot_pronoun
         up = user_pronoun or self.config.user_pronoun
-        normalized = _normalize(user_text)
-        if any(term in normalized for term in HEALTH_TERMS):
+        normalized = self._normalized_match_text(user_text)
+
+        direct_response = self._direct_response_for_current_turn(
+            user_text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun
+        )
+        if direct_response:
+            return direct_response
+
+        if self._contains_any_term(normalized, SADNESS_TERMS):
+            return f"{bp} nghe {up} đang buồn. {bp} ở đây với {up}; {up} cứ thở chậm lại một chút trước nhé."
+        if self._contains_any_term(normalized, HEALTH_TERMS):
             return (
                 f"Trời ơi, {up} thử nghỉ một chút, uống nước ấm và tránh ánh sáng mạnh nhé. "
                 f"Nếu triệu chứng nặng hoặc kéo dài, {up} nên nhờ người hỗ trợ hoặc đi khám."
             )
-        if any(term in normalized for term in FOOD_TERMS):
+        if self._contains_any_term(normalized, FOOD_TERMS):
             return f"{bp} chốt một lựa chọn đơn giản nhé: {up} ăn món nhẹ, dễ tiêu trước rồi tính tiếp sau."
-        return f"{bp} nghe rồi. {bp} sẽ bám vào điều {up} vừa nói và trả lời ngắn gọn hơn."
+        if self._contains_any_term(normalized, GREETING_TERMS):
+            return f"{bp} đây. {up} muốn kể gì cho {bp} nghe không?"
+        return f"{bp} nghe {up} rồi, nhưng đoạn này {bp} sợ hiểu nhầm. {up} nói lại ngắn hơn một chút nhé."
+
+    def _direct_response_for_current_turn(
+        self,
+        user_text: str,
+        bot_pronoun: str | None = None,
+        user_pronoun: str | None = None,
+    ) -> str | None:
+        bp = bot_pronoun or self.config.bot_pronoun
+        up = user_pronoun or self.config.user_pronoun
+        normalized = self._normalized_match_text(user_text)
+
+        if not normalized:
+            return None
+
+        stop_response = self._stop_response_for_normalized_text(normalized)
+        if stop_response:
+            self._apply_stop_intent()
+            return stop_response
+
+        if self._contains_any_term(normalized, CRISIS_TERMS):
+            return (
+                f"{bp} rất lo cho {up}. Nếu lúc này {up} có ý định làm hại bản thân, "
+                f"hãy gọi ngay người thân ở gần hoặc số khẩn cấp tại nơi {up} đang ở. "
+                f"{bp} sẽ ở đây với {up}; trước mắt hãy đặt bản thân ở nơi an toàn và gọi một người thật ngay nhé."
+            )
+
+        if self._contains_any_term(normalized, DISTRESS_TERMS):
+            return (
+                f"{bp} nghe là {up} đang rất nặng lòng. {up} không cần phải tự chịu một mình; "
+                f"hãy nhắn hoặc gọi một người thân ngay lúc này nếu cảm giác đó mạnh lên. "
+                f"{up} có đang nghĩ đến việc làm đau bản thân không?"
+            )
+
+        if self._contains_any_term(normalized, UNSAFE_INGESTION_TERMS):
+            return (
+                f"Không nên, {up}. Việc đó có nguy cơ nhiễm khuẩn, ký sinh trùng hoặc ngộ độc. "
+                f"Nếu {up} lỡ ăn phải, hãy súc miệng, uống nước sạch và liên hệ bác sĩ hoặc dược sĩ nếu thấy khó chịu."
+            )
+
+        if self._contains_any_term(normalized, GAMBLING_TERMS):
+            if self._contains_any_term(normalized, ("danh de", "lo de", "so de")):
+                return (
+                    f"{bp} không giúp chọn số đánh đề hay cá cược đâu. "
+                    f"Mấy việc đó rất dễ mất tiền và cuốn {up} đi xa hơn dự định."
+                )
+            return (
+                f"{bp} không cổ vũ làm app cờ bạc hoặc cá độ. "
+                f"Nếu {up} muốn làm sản phẩm, {bp} có thể giúp chuyển ý tưởng sang trò chơi giải trí không tiền thật hoặc công cụ quản lý tài chính lành mạnh hơn."
+            )
+
+        if self._contains_any_term(normalized, MEDICATION_TERMS):
+            return (
+                f"{bp} chưa thể khẳng định {up} có nên uống Panadol không. Nếu đó là paracetamol, "
+                f"{up} hãy dùng đúng liều trên hộp, tránh uống thêm thuốc khác cũng chứa paracetamol, "
+                f"và hỏi bác sĩ hoặc dược sĩ nếu có bệnh gan, uống rượu nhiều, dị ứng, đang dùng thuốc khác, hoặc đau nặng/kéo dài."
+            )
+
+        action = self._detect_action_intent(normalized)
+        if action == "water":
+            return f"{bp} nghe rồi. {bp} đã ghi nhận yêu cầu lấy nước cho {up}."
+        if action == "wake":
+            return f"{bp} nghe rồi. {bp} đã ghi nhận yêu cầu gọi {up} dậy."
+        if action == "follow":
+            return f"{bp} nghe rồi. {bp} đã ghi nhận yêu cầu đi theo {up}."
+        if action == "stop":
+            return f"{bp} dừng lại ngay."
+
+        if self._contains_any_term(normalized, PERSONA_ROLE_TERMS):
+            return f"Không, {up}. {bp} là robot bạn đồng hành hỗ trợ {up}, không tự nhận là mẹ hay người thân của {up}."
+
+        if self._asks_lumi_age(normalized):
+            return f"{bp} không có tuổi như con người. {bp} là robot bạn đồng hành đang được phát triển để hỗ trợ trò chuyện hằng ngày."
+
+        if self._is_simple_greeting(normalized):
+            return f"{bp} đây. {up} muốn kể gì cho {bp} nghe không?"
+
+        return None
+
+    def _stop_response_for_intent(self, text: str) -> str | None:
+        return self._stop_response_for_normalized_text(self._normalized_match_text(text))
+
+    def _stop_response_for_normalized_text(self, normalized: str) -> str | None:
+        for terms, response in STOP_RESPONSE_TERMS:
+            if self._contains_any_term(normalized, terms):
+                return response
+        return None
+
+    def _apply_stop_intent(self) -> None:
+        self.interrupt_event.set()
+        self.user_buffer.clear()
+        self.voice_buffer.clear()
+
+    def _detect_action_intent(self, normalized: str) -> str | None:
+        if re.search(r"\b(lay|mang|dua)\b.{0,30}\b(nuoc|ly nuoc|coc nuoc)\b", normalized):
+            return "water"
+        if self._contains_any_term(normalized, ("goi toi day", "goi minh day", "danh thuc toi", "danh thuc minh")):
+            return "wake"
+        if self._contains_any_term(normalized, ("di theo toi", "di theo minh", "theo toi", "theo minh")):
+            return "follow"
+        if self._contains_any_term(normalized, ("dung lai", "dung di", "dung thoi", "thoi dung")):
+            return "stop"
+        return None
+
+    def _asks_lumi_age(self, normalized: str) -> bool:
+        return "lumi" in normalized and self._contains_any_term(
+            normalized, ("bao nhieu tuoi", "may tuoi", "tuoi cua lumi")
+        )
+
+    def _is_simple_greeting(self, normalized: str) -> bool:
+        tokens = normalized.split()
+        return len(tokens) <= 4 and self._contains_any_term(normalized, GREETING_TERMS)
+
+    def _history_for_turn(self, user_text: str) -> list[dict[str, str]]:
+        """Always return recent history so Lumi remembers conversation context.
+
+        Trước đây dùng heuristic phức tạp (followup terms, short tokens) để quyết
+        định có gửi history không. Điều đó khiến Lumi "quên" context trong đa số
+        lượt hội thoại. Nay luôn gửi 8 messages gần nhất (4 lượt user+assistant)
+        để đảm bảo Mượt mà và Tự nhiên theo tiêu chí đánh giá.
+        """
+        return self.history[-8:]
+
+    def _normalized_match_text(self, text: str) -> str:
+        normalized = _normalize(text)
+        normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    def _contains_any_term(self, normalized: str, terms: tuple[str, ...]) -> bool:
+        return any(self._contains_term(normalized, term) for term in terms)
+
+    def _contains_term(self, normalized: str, term: str) -> bool:
+        normalized_term = self._normalized_match_text(term)
+        if not normalized_term:
+            return False
+        return re.search(rf"(?<![a-z0-9]){re.escape(normalized_term)}(?![a-z0-9])", normalized) is not None
 
     def _trim_to_one_question(self, text: str) -> str:
         parts = self._split_sentences(text)
@@ -709,6 +970,37 @@ class LumiMvpPipeline:
             return 0.0
         return len(first_tokens & second_tokens) / max(1, min(len(first_tokens), len(second_tokens)))
 
+    def _contains_non_vietnamese_script(self, text: str) -> bool:
+        return CJK_TEXT_RE.search(text) is not None
+
+    def _contains_persona_violation(self, text: str) -> bool:
+        normalized = self._normalized_match_text(text)
+        violation_terms = (
+            "con trai ngoan",
+            "con gai ngoan",
+            "me chieu",
+            "me day",
+            "me la",
+            "bo la",
+            "ba la",
+            "nguoi yeu cua",
+            "chong cua",
+            "vo cua",
+        )
+        return self._contains_any_term(normalized, violation_terms)
+
+    def _leaks_internal_prompt(self, text: str) -> bool:
+        normalized = self._normalized_match_text(text)
+        leak_terms = (
+            "quy tac so",
+            "luu y he thong",
+            "system prompt",
+            "theo prompt",
+            "yeu cau he thong",
+            "noi bo",
+        )
+        return self._contains_any_term(normalized, leak_terms)
+
     def _generate_response(
         self,
         text: str,
@@ -716,6 +1008,7 @@ class LumiMvpPipeline:
         user_pronoun: str | None = None,
         max_new_tokens: int | None = None,
         temperature: float | None = None,
+        history_override: list[dict[str, str]] | None = None,
     ) -> str:
         generate = self.response_generator.generate
         kwargs = {"bot_pronoun": bot_pronoun, "user_pronoun": user_pronoun}
@@ -728,7 +1021,8 @@ class LumiMvpPipeline:
                 kwargs["temperature"] = temperature
         except (TypeError, ValueError):
             pass
-        return generate(text, self.history, **kwargs)
+        history = self._history_for_turn(text) if history_override is None else history_override
+        return generate(text, history, **kwargs)
 
     def _write_response_sidecars(self, result: MvpPipelineResult, channel: str) -> None:
         write_audio_sidecars(
@@ -781,10 +1075,14 @@ class LumiMvpPipeline:
     def _remember(self, user_text: str, response_text: str) -> None:
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": response_text})
+        # Giữ tối đa 20 messages (10 lượt) để RAM ổn định trong session dài.
+        # Luôn giữ phần tử đầu (lời chào mở đầu của Lumi) không bị xóa.
+        if len(self.history) > 20:
+            self.history = self.history[:1] + self.history[-19:]
 
     def clear_history(self) -> None:
         self.history.clear()
-        self.history.append({"role": "assistant", "content": "Xin chào, tôi là Lumi. Bạn cần tôi giúp gì không?"})
+        self.history.append({"role": "assistant", "content": "Xin chào, Lumi đây. Bạn cần Lumi giúp gì không?"})
         self.user_buffer.clear()
         self.voice_buffer.clear()
 
@@ -804,11 +1102,4 @@ def _build_response_generator(config: LumiConfig):
 
 
 def _build_tts(config: LumiConfig):
-    if config.tts_provider == "vieneu":
-        return VieNeuTTS(config)
-    if config.tts_provider in {"edgetts", "edge-tts"}:
-        from lumi.providers.tts import EdgeTTS
-        return EdgeTTS(config)
-    if config.tts_provider in {"none", "silent", "no-audio"}:
-        return NoAudioTTS()
-    raise ValueError(f"TTS provider chưa hỗ trợ: {config.tts_provider}")
+    return create_tts_provider(config)

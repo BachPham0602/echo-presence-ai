@@ -12,6 +12,7 @@ from lumi.config import LumiConfig
 from lumi.errors import LumiProviderError
 from lumi.mvp_pipeline import LumiMvpPipeline
 from lumi.providers.asr import MicrophoneRecorder
+from lumi.providers.tts import available_tts_providers
 
 
 def main() -> None:
@@ -24,9 +25,13 @@ def main() -> None:
     parser.add_argument("--device", default=None, help="Input audio device index/name cho microphone, ví dụ --device 0.")
     parser.add_argument("--list-audio-devices", action="store_true", help="Liệt kê input audio devices rồi thoát.")
     parser.add_argument("--response-provider", choices=["qwen", "template"], default=None)
-    parser.add_argument("--tts-provider", choices=["vieneu", "no-audio"], default=None)
+    parser.add_argument("--tts-provider", choices=available_tts_providers(), default=None)
+    parser.add_argument("--tts-reference-wav", default=None, help="Giọng mẫu cho provider clone voice như zipvoice.")
+    parser.add_argument("--tts-reference-text", default=None, help="Transcript chính xác của file --tts-reference-wav.")
+    parser.add_argument("--tts-reference-speaker", default=None, help="Tên profile trong owner_voices dùng làm giọng mẫu cho zipvoice.")
     parser.add_argument("--asr-provider", choices=["phowhisper"], default=None)
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--output-subdir", default=None, help="Thư mục con dưới output-dir. Mặc định là ngày hiện tại; dùng 'test' khi chạy thử.")
     parser.add_argument("--cuda-visible-devices", default=None, help="GPU vật lý mà Lumi được phép thấy, mặc định 1. Ví dụ: 1 hoặc 1,2.")
     parser.add_argument("--once", help="Một câu text để chạy một lượt rồi thoát.")
     args = parser.parse_args()
@@ -116,22 +121,32 @@ def _config_from_args(args) -> LumiConfig:
     base = LumiConfig.from_env()
     return LumiConfig(
         owner_name=base.owner_name,
+        bot_pronoun=base.bot_pronoun,
+        user_pronoun=base.user_pronoun,
         silence_seconds=base.silence_seconds,
         debug=base.debug,
         asr_model=base.asr_model,
         llm_model=base.llm_model,
         speaker_model=base.speaker_model,
+        emotion_model=base.emotion_model,
         asr_provider=args.asr_provider or base.asr_provider,
         response_provider=args.response_provider or base.response_provider,
         tts_provider=args.tts_provider or base.tts_provider,
+        emotion_provider=base.emotion_provider,
         tts_mode=base.tts_mode,
         tts_voice=base.tts_voice,
+        tts_reference_wav=args.tts_reference_wav or base.tts_reference_wav,
+        tts_reference_text=args.tts_reference_text or base.tts_reference_text,
+        tts_reference_speaker=args.tts_reference_speaker or base.tts_reference_speaker,
         llm_max_new_tokens=base.llm_max_new_tokens,
         llm_voice_max_new_tokens=base.llm_voice_max_new_tokens,
         llm_temperature=base.llm_temperature,
         llm_repetition_penalty=base.llm_repetition_penalty,
         llm_no_repeat_ngram_size=base.llm_no_repeat_ngram_size,
+        emotion_min_confidence=base.emotion_min_confidence,
         output_dir=args.output_dir or base.output_dir,
+        output_subdir=args.output_subdir if args.output_subdir is not None else base.output_subdir,
+        owner_voice_dir=base.owner_voice_dir,
         cuda_visible_devices=args.cuda_visible_devices if args.cuda_visible_devices is not None else base.cuda_visible_devices,
     )
 

@@ -14,7 +14,7 @@ dependencies = []
 vad = ["silero-vad", "onnxruntime"]
 asr = ["transformers", "accelerate", "torch", "torchaudio", "soundfile"]
 llm = ["transformers", "accelerate", "torch"]
-tts = ["vieneu"]
+tts = ["vieneu", "edge-tts"]
 audio = ["sounddevice", "soundfile"]
 speaker = ["speechbrain", "torchaudio"]
 dev = ["pytest"]
@@ -26,6 +26,8 @@ all-models = [
     "soundfile",
     "sounddevice",
     "vieneu",
+    "edge-tts",
+    "speechbrain",
 ]
 
 [project.scripts]

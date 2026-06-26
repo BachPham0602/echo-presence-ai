@@ -45,6 +45,7 @@ export interface PipelineRunInput {
   textOverride?: string;
   enrolledProfiles?: SpeakerProfile[];
   history?: Array<{ role: "user" | "lumi"; content: string }>;
+  sessionId?: string;
 }
 
 export interface PipelineRunOutput {
@@ -61,13 +62,22 @@ export interface VoiceBufferResult {
   buffered_text?: string;
   reason?: string;
   wait_ms?: number;
+  is_complete?: boolean;
 }
 
-const LUMI_API_BASE = "http://127.0.0.1:8765";
+export interface VoiceStreamChunk {
+  status?: "done" | "empty" | "interrupted" | string;
+  text_chunk?: string;
+  audio_base64?: string;
+}
+
+export type VoiceStreamChunkHandler = (chunk: VoiceStreamChunk) => void | Promise<void>;
+
+const LUMI_API_BASE = import.meta.env.VITE_LUMI_API_BASE ?? "";
 
 function absoluteAudioUrl(url?: string): string | undefined {
   if (!url) return undefined;
-  return url.startsWith("/") ? `${LUMI_API_BASE}${url}` : url;
+  return url.startsWith("/") && LUMI_API_BASE ? LUMI_API_BASE + url : url;
 }
 
 type LumiApiPayload = {
@@ -91,6 +101,16 @@ function outputFromApi(data: LumiApiPayload | null, fallbackTranscript = ""): Pi
   };
 }
 
+async function readApiError(res: Response): Promise<string> {
+  const errorText = await res.text();
+  try {
+    const parsed = JSON.parse(errorText) as { error?: string; message?: string };
+    return parsed.error || parsed.message || errorText;
+  } catch {
+    return errorText;
+  }
+}
+
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${LUMI_API_BASE}${path}`, {
     method: "POST",
@@ -99,7 +119,10 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   });
 
   if (!res.ok) {
-    throw new Error(`Lumi API error: ${res.status}`);
+    const detail = await readApiError(res);
+    throw new Error(
+      detail ? "Lumi API error: " + res.status + " - " + detail : "Lumi API error: " + res.status,
+    );
   }
 
   return res.json() as Promise<T>;
@@ -118,7 +141,7 @@ export async function runLumiTurn(
   deps: PipelineDependencies = defaultPipelineDeps,
   onProgress: PipelineProgress = () => {},
 ): Promise<PipelineRunOutput> {
-  const { audio, textOverride, enrolledProfiles = [], history = [] } = input;
+  const { audio, textOverride, enrolledProfiles = [], history = [], sessionId } = input;
 
   onProgress("transcribing");
   const transcript = textOverride
@@ -135,6 +158,7 @@ export async function runLumiTurn(
       text: transcript,
       bot_pronoun: "Lumi",
       user_pronoun: "bạn",
+      session_id: sessionId,
     });
   } catch (error) {
     console.error("Error calling Lumi API:", error);
@@ -145,22 +169,116 @@ export async function runLumiTurn(
   return outputFromApi(data, transcript);
 }
 
-export async function submitVoiceTranscript(text: string): Promise<VoiceBufferResult> {
+export async function submitVoiceTranscript(
+  text: string,
+  sessionId?: string,
+): Promise<VoiceBufferResult> {
   return postJson<VoiceBufferResult>("/api/voice_text", {
     text,
     bot_pronoun: "Lumi",
     user_pronoun: "bạn",
     owner_name: "bạn",
+    session_id: sessionId,
   });
 }
 
-export async function flushVoiceTurn(): Promise<PipelineRunOutput | null> {
+export async function submitVoiceAudioFallback(
+  audio: Blob,
+  sessionId?: string,
+): Promise<VoiceBufferResult> {
+  const res = await fetch(`${LUMI_API_BASE}/api/voice_chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "audio/wav",
+      "X-Bot-Pronoun": encodeURIComponent("Lumi"),
+      "X-User-Pronoun": encodeURIComponent("bạn"),
+      "X-Owner-Name": encodeURIComponent("bạn"),
+      "X-Session-Id": encodeURIComponent(sessionId ?? ""),
+    },
+    body: audio,
+  });
+
+  if (!res.ok) {
+    const detail = await readApiError(res);
+    throw new Error(
+      detail ? "Lumi API error: " + res.status + " - " + detail : "Lumi API error: " + res.status,
+    );
+  }
+
+  return res.json() as Promise<VoiceBufferResult>;
+}
+
+export async function flushVoiceTurn(sessionId?: string): Promise<PipelineRunOutput | null> {
   const data = await postJson<LumiApiPayload>("/api/flush", {
     mode: "voice",
     bot_pronoun: "Lumi",
     user_pronoun: "bạn",
+    session_id: sessionId,
   });
 
   if (!data?.response_text) return null;
   return outputFromApi(data, data?.input_text || "");
+}
+
+export async function flushVoiceTurnStream(
+  sessionId: string | undefined,
+  onChunk: VoiceStreamChunkHandler,
+): Promise<PipelineRunOutput | null> {
+  const res = await fetch(`${LUMI_API_BASE}/api/voice_stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      bot_pronoun: "Lumi",
+      user_pronoun: "bạn",
+      session_id: sessionId,
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await readApiError(res);
+    throw new Error(
+      detail ? "Lumi API error: " + res.status + " - " + detail : "Lumi API error: " + res.status,
+    );
+  }
+  if (!res.body) throw new Error("Lumi API error: streaming body is empty");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullResponse = "";
+  let terminalStatus = "";
+
+  async function handleFrame(frame: string) {
+    const data = frame
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data) return;
+
+    const chunk = JSON.parse(data) as VoiceStreamChunk;
+    if (chunk.text_chunk) fullResponse += chunk.text_chunk;
+    if (chunk.status) terminalStatus = chunk.status;
+    await onChunk(chunk);
+  }
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      await handleFrame(frame);
+    }
+  }
+
+  if (buffer.trim()) await handleFrame(buffer);
+  if (terminalStatus === "empty" || !fullResponse.trim()) return null;
+  return outputFromApi({ response_text: fullResponse.trim() });
+}
+
+export async function interruptLumiTurn(sessionId?: string): Promise<void> {
+  await postJson<{ status: string }>("/api/interrupt", { session_id: sessionId });
 }
