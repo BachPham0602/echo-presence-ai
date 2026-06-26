@@ -81,7 +81,7 @@ LUMI_CUDA_VISIBLE_DEVICES=1,2 PYTHONPATH=src python -m lumi.web_app --port 8765
 
 Hugging Face chỉ tải model một lần vào cache local. Các lần chạy sau sẽ đọc lại từ disk; bạn vẫn thấy bước `Loading checkpoint shards`, nhưng đó là load model vào RAM/VRAM, không phải tải internet.
 
-Tải trước model ASR + LLM, và thử khởi tạo TTS:
+Tải trước model ASR + LLM + emotion, và thử khởi tạo TTS:
 
 ```bash
 cd /home/ubuntu/Easy-Turn/hackathon
@@ -98,6 +98,18 @@ Chỉ tải Qwen:
 
 ```bash
 PYTHONPATH=src python -m lumi.prefetch_models --llm
+```
+
+Tải emotion classifier về một thư mục cố định trong project:
+
+```bash
+PYTHONPATH=src python -m lumi.prefetch_models --emotion
+```
+
+Sau khi thư mục local tồn tại, Lumi tự dùng model emotion local khi chạy server:
+
+```bash
+PYTHONPATH=src python -m lumi.web_app --port 8765
 ```
 
 Kiểm tra máy đã có cache chưa, không tải internet:
@@ -130,6 +142,36 @@ Chạy web với provider thật:
 ```bash
 cd /home/ubuntu/Easy-Turn/hackathon
 PYTHONPATH=src python -m lumi.web_app --port 8765
+```
+
+Mặc định output được lưu theo ngày dưới `outputs/YYYYMMDD`, phù hợp khi demo/ngrok. Nếu chạy thử local và muốn gom file vào một thư mục cố định:
+
+```bash
+LUMI_OUTPUT_SUBDIR=test PYTHONPATH=src python -m lumi.web_app --port 8765
+# hoặc
+PYTHONPATH=src python -m lumi.web_app --port 8765 --output-subdir test
+```
+
+Đổi TTS ngay trên web/CLI bằng biến môi trường:
+
+```bash
+export LUMI_TTS_PROVIDER=edge-tts
+```
+
+Hoặc dùng ZipVoice với profile giọng trong `owner_voices/Uyên`:
+
+```bash
+export LUMI_TTS_PROVIDER=zipvoice
+export LUMI_TTS_REFERENCE_SPEAKER="Uyên"
+export LUMI_OWNER_NAME="Uyên"
+```
+
+Nếu muốn chỉ định thẳng một file mẫu riêng:
+
+```bash
+export LUMI_TTS_PROVIDER=zipvoice
+export LUMI_TTS_REFERENCE_WAV=/app/owner_voices/Uyên/01_1782294979600573375.wav
+export LUMI_TTS_REFERENCE_TEXT="... transcript đúng của file mẫu ..."
 ```
 
 Mở trang:

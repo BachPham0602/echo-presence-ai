@@ -86,8 +86,8 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
   const activeExpression: ExpressionName = override ?? managed;
 
   const handleFinal = useCallback(
-    (text: string) => {
-      void pipeline.sendVoice(text);
+    (text: string, audio?: Blob) => {
+      void pipeline.sendVoice(text, audio);
     },
     [pipeline],
   );

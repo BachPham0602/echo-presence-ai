@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 from lumi.config import LumiConfig
 from lumi.errors import MissingDependencyError
 from lumi.prompts import RESPONSE_SYSTEM_PROMPT
@@ -12,6 +14,7 @@ class QwenLocalResponseGenerator:
         self.config = config
         self._tokenizer = None
         self._model = None
+        self._lock = threading.RLock()
 
     def generate(
         self,
@@ -204,6 +207,34 @@ class QwenLocalResponseGenerator:
             device_map="auto",
         )
         return self._tokenizer, self._model
+
+
+def _lock_qwen_method(method):
+    def wrapped(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapped
+
+
+def _lock_qwen_stream_method(method):
+    def wrapped(self, *args, **kwargs):
+        def generator():
+            with self._lock:
+                yield from method(self, *args, **kwargs)
+
+        return generator()
+
+    return wrapped
+
+
+QwenLocalResponseGenerator.generate = _lock_qwen_method(QwenLocalResponseGenerator.generate)
+QwenLocalResponseGenerator.generate_classification = _lock_qwen_method(
+    QwenLocalResponseGenerator.generate_classification
+)
+QwenLocalResponseGenerator.generate_stream = _lock_qwen_stream_method(
+    QwenLocalResponseGenerator.generate_stream
+)
 
 
 class TemplateChatGenerator:

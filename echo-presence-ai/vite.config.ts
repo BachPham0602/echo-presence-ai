@@ -29,15 +29,18 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
-  server: {
-    proxy: {
-      "/api": {
-        target: "http://127.0.0.1:8765",
-        changeOrigin: true,
-      },
-      "/outputs": {
-        target: "http://127.0.0.1:8765",
-        changeOrigin: true,
+  vite: {
+    server: {
+      allowedHosts: [".ngrok-free.app"],
+      proxy: {
+        "/api": {
+          target: "http://127.0.0.1:8765",
+          changeOrigin: true,
+        },
+        "/outputs": {
+          target: "http://127.0.0.1:8765",
+          changeOrigin: true,
+        },
       },
     },
   },

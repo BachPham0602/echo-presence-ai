@@ -15,8 +15,14 @@ RUN apt-get update && apt-get install -y \
 COPY pyproject.toml README.md /app/
 COPY src/ /app/src/
 
-# Cài đặt dependency (bao gồm llm, tts, asr, audio)
-RUN pip install --no-cache-dir -e '.[llm,tts,asr,audio]'
+# Copy ZipVoice từ named build context trong docker-compose.yml.
+COPY --from=vizipvoice zipvoice/ /app/zipvoice/
+COPY --from=vizipvoice requirements-tts-runtime.txt /tmp/vizipvoice-requirements.txt
+
+# Cài đặt dependency (bao gồm llm, tts, asr, audio, speaker) và runtime cho ZipVoice.
+RUN pip install --no-cache-dir -e '.[llm,tts,asr,audio,speaker]' \
+    && pip install --no-cache-dir -r /tmp/vizipvoice-requirements.txt \
+    && pip install --no-cache-dir 'huggingface_hub>=1.21.0'
 
 EXPOSE 8765
 

@@ -32,6 +32,17 @@ class LumiPipelineTest(unittest.TestCase):
 
         self.assertFalse(result.is_complete)
 
+    def test_turn_taking_completes_long_sentence(self):
+        detector = HeuristicTurnTakingDetector(silence_seconds=1.5)
+
+        result = detector.decide(
+            segment=TranscriptSegment(text="Tôi đói quá và tôi muốn Lumi trả lời ngay vì tôi đã nói xong câu này rồi đó"),
+            speech_gap_seconds=0.8,
+        )
+
+        self.assertTrue(result.is_complete)
+        self.assertLessEqual(result.wait_ms, 400)
+
     def test_pipeline_responds_to_lonely_disclosure(self):
         pipeline = LumiPipeline()
 

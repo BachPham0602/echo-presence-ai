@@ -6,16 +6,16 @@ from lumi.providers.addressee import _normalize
 
 class HeuristicTurnTakingDetector:
     end_particles = {
-        "nhỉ", "nhé", "nha", "nghen", 
-        "hả", "hah", "không", "chưa", 
-        "à", "ừ", "ờ", "thôi"
+        "nhi", "nhe", "nha", "nghen",
+        "ha", "hah", "khong", "chua",
+        "a", "u", "o", "thoi",
     }
 
     keep_turn_particles = {
-        "mà", "nhưng mà", "rồi",
-        "là", "tức là", "ý tôi là",
-        "ừm", "à", "thì", "kiểu như", "kiểu",
-        "và", "với", "nhưng", "vì", "nên", "nếu"
+        "ma", "nhung ma", "roi",
+        "la", "tuc la", "y toi la",
+        "um", "a", "thi", "kieu nhu", "kieu",
+        "va", "voi", "nhung", "vi", "nen", "neu",
     }
 
     def __init__(self, silence_seconds: float = 0.6):
@@ -46,13 +46,17 @@ class HeuristicTurnTakingDetector:
             if last_1 == p or last_2 == p:
                 return TurnDecision(True, 0.9, f"Có tiểu từ kết thúc: '{p}'", wait_ms=0)
 
-        # Mẹo: câu không có động từ chính (nếu chỉ 1-2 từ không phải tiểu từ) thường chưa xong
         if len(tokens) <= 2:
+            if speech_gap_seconds >= self.silence_seconds:
+                return TurnDecision(True, 0.68, "Câu ngắn nhưng đã im đủ lâu", wait_ms=400)
             return TurnDecision(False, 0.6, "Câu quá ngắn, có thể chưa xong", wait_ms=800)
             
-        # Nếu câu quá dài, khả năng cao là họ đã hoàn thành một ý lớn
+        # Nếu câu quá dài, khả năng cao là họ đã hoàn thành một ý lớn.
         if len(tokens) > 15:
-            return TurnDecision(False, 0.8, "Câu dài, có thể đã xong ý", wait_ms=400)
+            return TurnDecision(True, 0.82, "Câu dài, đã đủ để Lumi phản hồi", wait_ms=300)
+
+        if speech_gap_seconds >= self.silence_seconds:
+            return TurnDecision(True, 0.75, "Đã im đủ lâu sau một ý hoàn chỉnh", wait_ms=300)
 
         # 3. Không rõ -> Xem như đã xong (True) để phản hồi ngay, LLM sẽ tự hỏi lại nếu thiếu ý
         return TurnDecision(True, 0.5, "Không rõ ý, nhưng chuyển LLM tự hỏi lại", wait_ms=0)

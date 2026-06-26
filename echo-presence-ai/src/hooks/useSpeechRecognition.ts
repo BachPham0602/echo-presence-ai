@@ -14,8 +14,8 @@ export type RecognitionStatus =
 
 export interface UseSpeechRecognitionOptions {
   lang?: string;
-  /** Called with each final transcript chunk. */
-  onFinal: (text: string) => void;
+  /** Called with each final transcript chunk and the matching recent audio when available. */
+  onFinal: (text: string, audio?: Blob) => void;
   /** Called continuously with the latest interim transcript. */
   onInterim?: (text: string) => void;
 }
@@ -27,6 +27,21 @@ export interface UseSpeechRecognitionResult {
   supported: boolean;
   start: () => Promise<void>;
   stop: () => void;
+}
+
+function nextFinalTranscriptChunk(cleaned: string, previous: string): string {
+  const currentLower = cleaned.toLowerCase();
+  const previousLower = previous.toLowerCase();
+
+  if (!previousLower || currentLower === previousLower) return cleaned;
+  if (!currentLower.startsWith(previousLower)) return cleaned;
+
+  const cutAt = previous.length;
+  const previousChar = cleaned.charAt(cutAt - 1);
+  const nextChar = cleaned.charAt(cutAt);
+  const cutsAtWordBoundary = !nextChar || /\s/.test(nextChar) || /\s/.test(previousChar);
+
+  return cutsAtWordBoundary ? cleaned.substring(cutAt).trim() : cleaned;
 }
 
 /**
@@ -62,30 +77,44 @@ export function useSpeechRecognition({
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interimBufferRef = useRef("");
   const lastFinalRef = useRef("");
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioSinkRef = useRef<GainNode | null>(null);
+  const audioBuffersRef = useRef<Float32Array[]>([]);
+  const audioSampleRateRef = useRef(16000);
 
-  const emitFinal = (text: string) => {
-    const cleaned = text.trim().replace(/\s+/g, " ");
-    if (!cleaned) return;
-    
-    const currentLower = cleaned.toLowerCase();
-    const lastLower = lastFinalRef.current.toLowerCase();
-    
-    if (currentLower === lastLower) {
-      console.log("[Lumi STT] dedup, skipping:", cleaned);
-      return;
-    }
-    
-    let newPart = cleaned;
-    if (lastLower.length > 0 && currentLower.startsWith(lastLower)) {
-      newPart = cleaned.substring(lastFinalRef.current.length).trim();
-    }
-    
-    lastFinalRef.current = cleaned;
-    
-    if (newPart) {
-      onFinalRef.current(newPart);
-    }
-  };
+  const consumeRecentAudio = useCallback((): Blob | undefined => {
+    const buffers = audioBuffersRef.current;
+    audioBuffersRef.current = [];
+    if (buffers.length === 0) return undefined;
+    return encodeWav(buffers, audioSampleRateRef.current);
+  }, []);
+
+  const emitFinal = useCallback(
+    (text: string) => {
+      const cleaned = text.trim().replace(/\s+/g, " ");
+      if (!cleaned) return;
+
+      const currentLower = cleaned.toLowerCase();
+      const lastLower = lastFinalRef.current.toLowerCase();
+
+      if (currentLower === lastLower) {
+        console.log("[Lumi STT] dedup, skipping:", cleaned);
+        return;
+      }
+
+      const newPart = nextFinalTranscriptChunk(cleaned, lastFinalRef.current);
+
+      lastFinalRef.current = cleaned;
+
+      if (newPart) {
+        onFinalRef.current(newPart, consumeRecentAudio());
+      }
+    },
+    [consumeRecentAudio],
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SpeechRecognitionCtor: any =
@@ -101,6 +130,63 @@ export function useSpeechRecognition({
       silenceTimerRef.current = null;
     }
   };
+
+  const cleanupAudioCapture = useCallback(() => {
+    try {
+      audioProcessorRef.current?.disconnect();
+    } catch {
+      /* noop */
+    }
+    try {
+      audioSourceRef.current?.disconnect();
+    } catch {
+      /* noop */
+    }
+    try {
+      audioSinkRef.current?.disconnect();
+    } catch {
+      /* noop */
+    }
+    micStreamRef.current?.getTracks().forEach((track) => track.stop());
+    void audioContextRef.current?.close().catch(() => undefined);
+    micStreamRef.current = null;
+    audioContextRef.current = null;
+    audioSourceRef.current = null;
+    audioProcessorRef.current = null;
+    audioSinkRef.current = null;
+    audioBuffersRef.current = [];
+  }, []);
+
+  const startAudioCapture = useCallback(async () => {
+    cleanupAudioCapture();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    const audioContext = new AudioContextCtor();
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    const sink = audioContext.createGain();
+    sink.gain.value = 0;
+    audioSampleRateRef.current = audioContext.sampleRate;
+    audioBuffersRef.current = [];
+
+    processor.onaudioprocess = (event) => {
+      audioBuffersRef.current.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      const maxBuffers = Math.ceil((audioSampleRateRef.current * 12) / 4096);
+      if (audioBuffersRef.current.length > maxBuffers) {
+        audioBuffersRef.current.splice(0, audioBuffersRef.current.length - maxBuffers);
+      }
+    };
+
+    source.connect(processor);
+    processor.connect(sink);
+    sink.connect(audioContext.destination);
+
+    micStreamRef.current = stream;
+    audioContextRef.current = audioContext;
+    audioSourceRef.current = source;
+    audioProcessorRef.current = processor;
+    audioSinkRef.current = sink;
+  }, [cleanupAudioCapture]);
 
   const buildRecognition = useCallback(() => {
     if (!SpeechRecognitionCtor) return null;
@@ -152,7 +238,7 @@ export function useSpeechRecognition({
             onInterimRef.current?.("");
             emitFinal(pending);
           }
-        }, 1800);
+        }, 1100);
       }
     };
 
@@ -214,7 +300,7 @@ export function useSpeechRecognition({
     };
 
     return recognition;
-  }, [SpeechRecognitionCtor, lang]);
+  }, [SpeechRecognitionCtor, emitFinal, lang]);
 
   const start = useCallback(async () => {
     if (!SpeechRecognitionCtor) {
@@ -230,10 +316,7 @@ export function useSpeechRecognition({
     // inside the user gesture. This dramatically improves reliability on
     // Chromium and gives clear errors when blocked.
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // We don't need the stream itself — release it immediately so the
-      // recognizer can claim the microphone.
-      stream.getTracks().forEach((t) => t.stop());
+      await startAudioCapture();
     } catch (err) {
       const name = (err as { name?: string })?.name ?? "";
       console.error("[Lumi STT] getUserMedia failed:", name, err);
@@ -263,10 +346,10 @@ export function useSpeechRecognition({
     }
     const recognition = buildRecognition();
     if (!recognition) return;
-    
+
     // Clear the dedup ref because Web Speech API resets its history on a new session.
     lastFinalRef.current = "";
-    
+
     recognitionRef.current = recognition;
     shouldRestartRef.current = true;
     setStatus("starting");
@@ -275,7 +358,7 @@ export function useSpeechRecognition({
     } catch (e) {
       console.warn("[Lumi STT] start() threw — likely already started", e);
     }
-  }, [SpeechRecognitionCtor, buildRecognition]);
+  }, [SpeechRecognitionCtor, buildRecognition, startAudioCapture]);
 
   const stop = useCallback(() => {
     console.log("[Lumi STT] stop requested");
@@ -291,7 +374,8 @@ export function useSpeechRecognition({
     }
     setIsListening(false);
     setStatus("idle");
-  }, []);
+    cleanupAudioCapture();
+  }, [cleanupAudioCapture]);
 
   // Cleanup on unmount.
   useEffect(() => {
@@ -303,8 +387,62 @@ export function useSpeechRecognition({
       } catch {
         /* noop */
       }
+      cleanupAudioCapture();
     };
-  }, []);
+  }, [cleanupAudioCapture]);
 
   return { status, error, isListening, supported, start, stop };
+}
+
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
+
+function encodeWav(buffers: Float32Array[], sampleRate: number): Blob {
+  const samples = mergeBuffers(buffers);
+  const dataLength = samples.length * 2;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, dataLength, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    offset += 2;
+  }
+
+  return new Blob([view], { type: "audio/wav" });
+}
+
+function mergeBuffers(buffers: Float32Array[]): Float32Array {
+  const totalLength = buffers.reduce((sum, buffer) => sum + buffer.length, 0);
+  const merged = new Float32Array(totalLength);
+  let offset = 0;
+  for (const buffer of buffers) {
+    merged.set(buffer, offset);
+    offset += buffer.length;
+  }
+  return merged;
+}
+
+function writeString(view: DataView, offset: number, value: string) {
+  for (let i = 0; i < value.length; i += 1) {
+    view.setUint8(offset + i, value.charCodeAt(i));
+  }
 }

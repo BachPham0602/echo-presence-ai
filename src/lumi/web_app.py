@@ -4,16 +4,18 @@ if __package__ in {None, ""}:
     import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    #sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "ViZipvoice"))
 
 import argparse
-import html
 import json
+import uuid
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from time import time_ns
-from urllib.parse import unquote, urlparse
+from time import time, time_ns
+from urllib.parse import quote, unquote, urlparse
 import wave
 import struct
 import math
@@ -22,20 +24,78 @@ from lumi.config import LumiConfig
 from lumi.errors import LumiProviderError
 from lumi.mvp_pipeline import LumiMvpPipeline
 from lumi.output_metadata import write_audio_sidecars
+from lumi.providers.tts import _ensure_writable_dir, available_tts_providers
 from lumi.providers.speaker import list_speaker_profiles
 import threading
 
 pipeline_lock = threading.Lock()
+SESSION_ID_HEADER = "X-Session-Id"
+SESSION_COOKIE_NAME = "lumi_session_id"
+
+
+class LumiSessionState:
+    def __init__(self, pipeline: LumiMvpPipeline):
+        self.pipeline = pipeline
+        self.lock = threading.RLock()
+        self.last_used = time()
+
+
+class LumiSessionManager:
+    def __init__(self, prototype: LumiMvpPipeline, max_sessions: int = 128):
+        self.prototype = prototype
+        self.max_sessions = max(1, max_sessions)
+        self._sessions: dict[str, LumiSessionState] = {}
+        self._lock = threading.RLock()
+
+    def get(self, raw_session_id: str | None) -> LumiSessionState:
+        session_id = _clean_session_id(raw_session_id) or _new_session_id()
+        with self._lock:
+            state = self._sessions.get(session_id)
+            if state is None:
+                state = LumiSessionState(self._new_pipeline())
+                self._sessions[session_id] = state
+                self._trim_locked()
+            state.last_used = time()
+            return state
+
+    def _new_pipeline(self) -> LumiMvpPipeline:
+        return LumiMvpPipeline(
+            config=self.prototype.config,
+            asr=self.prototype.asr,
+            response_generator=self.prototype.response_generator,
+            tts=self.prototype.tts,
+            turn_detector=self.prototype.turn_detector,
+            addressee_detector=self.prototype.addressee_detector,
+            speaker_verifier=self.prototype.speaker_verifier,
+            emotion_classifier=self.prototype.emotion_classifier,
+        )
+
+    def _trim_locked(self) -> None:
+        overflow = len(self._sessions) - self.max_sessions
+        if overflow <= 0:
+            return
+        oldest = sorted(self._sessions.items(), key=lambda item: item[1].last_used)[:overflow]
+        for session_id, _state in oldest:
+            self._sessions.pop(session_id, None)
+
 
 class LumiWebHandler(BaseHTTPRequestHandler):
     pipeline: LumiMvpPipeline
+    session_manager: LumiSessionManager
     config: LumiConfig
     output_dir: Path
 
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Bot-Pronoun, X-User-Pronoun, X-Owner-Name, X-Sample-Index, X-Prompt")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Session-Id, X-Bot-Pronoun, X-User-Pronoun, X-Owner-Name, X-Sample-Index, X-Prompt")
+        self.send_header("Access-Control-Expose-Headers", "X-Session-Id")
+        session_cookie = getattr(self, "_session_cookie_to_set", None)
+        if session_cookie:
+            self.send_header(
+                "Set-Cookie",
+                f"{SESSION_COOKIE_NAME}={session_cookie}; Path=/; Max-Age=2592000; SameSite=Lax",
+            )
         super().end_headers()
 
     def do_OPTIONS(self) -> None:
@@ -89,9 +149,7 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             elif path == "/api/interrupt":
                 self._handle_interrupt()
             elif path == "/api/clear":
-                with pipeline_lock:
-                    self.pipeline.clear_history()
-                self._send_json({"status": "cleared"})
+                self._handle_clear()
             else:
                 self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except LumiProviderError as exc:
@@ -104,6 +162,37 @@ class LumiWebHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         print(f"[web] {self.address_string()} - {fmt % args}")
 
+    def _request_session_id(self, payload: dict | None = None) -> str:
+        session_id = None
+        if payload:
+            session_id = _clean_session_id(payload.get("session_id") or payload.get("conversation_id"))
+        if not session_id:
+            session_id = _clean_session_id(self.headers.get(SESSION_ID_HEADER))
+        if not session_id:
+            session_id = self._session_id_from_cookie()
+        if not session_id:
+            session_id = _new_session_id()
+            self._session_cookie_to_set = session_id
+        self._active_session_id = session_id
+        return session_id
+
+    def _session_id_from_cookie(self) -> str | None:
+        cookie_header = self.headers.get("Cookie")
+        if not cookie_header:
+            return None
+        cookie = SimpleCookie()
+        try:
+            cookie.load(cookie_header)
+        except Exception:
+            return None
+        morsel = cookie.get(SESSION_COOKIE_NAME)
+        if not morsel:
+            return None
+        return _clean_session_id(morsel.value)
+
+    def _session_for_payload(self, payload: dict | None = None) -> LumiSessionState:
+        return self.session_manager.get(self._request_session_id(payload))
+
     def _handle_text(self) -> None:
         payload = self._read_json()
         text = str(payload.get("text", "")).strip()
@@ -112,9 +201,10 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         if not text:
             self._send_json({"error": "Text rỗng."}, HTTPStatus.BAD_REQUEST)
             return
-        with pipeline_lock:
-            result = self.pipeline.handle_text(text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
-        self._send_json(_payload_from_result(result))
+        session = self._session_for_payload(payload)
+        with session.lock:
+            result = session.pipeline.handle_text(text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
+        self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_chat(self) -> None:
         payload = self._read_json()
@@ -124,12 +214,13 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         if not text:
             self._send_json({"error": "Text rỗng."}, HTTPStatus.BAD_REQUEST)
             return
-        with pipeline_lock:
-            result = self.pipeline.handle_chat(text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
+        session = self._session_for_payload(payload)
+        with session.lock:
+            result = session.pipeline.handle_chat(text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
         if isinstance(result, dict):
             self._send_json(result)
         else:
-            self._send_json(_payload_from_result(result))
+            self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_voice_text(self) -> None:
         payload = self._read_json()
@@ -137,33 +228,38 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         bot_pronoun = payload.get("bot_pronoun")
         user_pronoun = payload.get("user_pronoun")
         owner_name = payload.get("owner_name") or user_pronoun
+        print(f"[DEBUG] /api/voice_text nhận được: '{text}'")
         if not text:
             self._send_json({"error": "Voice text rỗng."}, HTTPStatus.BAD_REQUEST)
             return
         voice_user_pronoun = user_pronoun or owner_name
-        with pipeline_lock:
-            result = self.pipeline.handle_voice_transcript(
+        session = self._session_for_payload(payload)
+        print(f"[DEBUG] /api/voice_text đang chờ session.lock...")
+        with session.lock:
+            result = session.pipeline.handle_voice_transcript(
                 text, bot_pronoun=bot_pronoun, user_pronoun=voice_user_pronoun
             )
         if isinstance(result, dict):
             self._send_json(result)
         else:
-            self._send_json(_payload_from_result(result))
+            self._send_json(_payload_from_result(result, self.config.output_root_path))
+
 
     def _handle_flush(self) -> None:
         payload = self._read_json()
         bot_pronoun = payload.get("bot_pronoun")
         user_pronoun = payload.get("user_pronoun")
         mode = str(payload.get("mode", "text")).strip().lower()
-        with pipeline_lock:
+        session = self._session_for_payload(payload)
+        with session.lock:
             if mode == "voice":
-                result = self.pipeline.flush_voice_chat(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun, is_timeout=True)
+                result = session.pipeline.flush_voice_chat(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun, is_timeout=True)
             else:
-                result = self.pipeline.flush_chat(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
+                result = session.pipeline.flush_chat(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
         if isinstance(result, dict):
             self._send_json(result)
         else:
-            self._send_json(_payload_from_result(result))
+            self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_voice_stream(self) -> None:
         payload = self._read_json()
@@ -176,9 +272,9 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.end_headers()
         
-        # We must NOT use pipeline_lock for the entire stream, otherwise it blocks /api/interrupt
-        # But we do need thread safety for history. We'll rely on the pipeline's own mechanisms or stream outside the lock.
-        generator = self.pipeline.flush_voice_chat_stream(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun, is_timeout=True)
+        # Do not hold the session lock for the whole stream, otherwise it blocks /api/interrupt.
+        session = self._session_for_payload(payload)
+        generator = session.pipeline.flush_voice_chat_stream(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun, is_timeout=True)
         
         try:
             for chunk_data in generator:
@@ -187,10 +283,24 @@ class LumiWebHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
         except Exception as e:
             print(f"[ERROR] Voice Stream error: {e}")
+        finally:
+            # QUAN TRọNG: đóng generator rõ ràng để chắc chắn generation_lock luôn
+            # được giải phóng, ngay cả khi client ngắt kết nối giữa chừng (BrokenPipe).
+            generator.close()
+
             
     def _handle_interrupt(self) -> None:
-        self.pipeline.interrupt_event.set()
+        payload = self._read_json()
+        session = self._session_for_payload(payload)
+        session.pipeline.interrupt_event.set()
         self._send_json({"status": "interrupting"})
+
+    def _handle_clear(self) -> None:
+        payload = self._read_json()
+        session = self._session_for_payload(payload)
+        with session.lock:
+            session.pipeline.clear_history()
+        self._send_json({"status": "cleared"})
 
     def _handle_audio(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
@@ -199,12 +309,13 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             return
         bot_pronoun = unquote(self.headers.get("X-Bot-Pronoun", "")) or None
         user_pronoun = unquote(self.headers.get("X-User-Pronoun", "")) or None
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        audio_path = self.output_dir / f"web_input_{time_ns()}.wav"
+        output_dir = self._current_output_dir()
+        audio_path = output_dir / f"web_input_{time_ns()}.wav"
         audio_path.write_bytes(self.rfile.read(length))
-        with pipeline_lock:
-            result = self.pipeline.handle_audio_file(audio_path, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
-        self._send_json(_payload_from_result(result))
+        session = self._session_for_payload()
+        with session.lock:
+            result = session.pipeline.handle_audio_file(audio_path, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
+        self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_voice_chat(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
@@ -214,8 +325,8 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         bot_pronoun = unquote(self.headers.get("X-Bot-Pronoun", "")) or None
         user_pronoun = unquote(self.headers.get("X-User-Pronoun", "")) or None
         owner_name = unquote(self.headers.get("X-Owner-Name", "")) or None
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        audio_path = self.output_dir / f"web_input_voice_{time_ns()}.wav"
+        output_dir = self._current_output_dir()
+        audio_path = output_dir / f"web_input_voice_{time_ns()}.wav"
         audio_data = self.rfile.read(length)
         audio_path.write_bytes(audio_data)
         
@@ -243,14 +354,15 @@ class LumiWebHandler(BaseHTTPRequestHandler):
                             },
                         )
                         payload = {"status": "ignored", "reason": reason}
-                        _attach_input_audio_links(payload, audio_path)
+                        _attach_input_audio_links(payload, audio_path, self.config.output_root_path)
                         self._send_json(payload)
                         return
         except Exception as e:
             print(f"Lỗi đọc RMS: {e}")
 
-        with pipeline_lock:
-            result = self.pipeline.handle_voice_chat(
+        session = self._session_for_payload()
+        with session.lock:
+            result = session.pipeline.handle_voice_chat(
                 audio_path,
                 bot_pronoun=bot_pronoun,
                 user_pronoun=user_pronoun,
@@ -258,10 +370,10 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             )
         if isinstance(result, dict):
             payload = dict(result)
-            _attach_input_audio_links(payload, audio_path)
+            _attach_input_audio_links(payload, audio_path, self.config.output_root_path)
             self._send_json(payload)
         else:
-            self._send_json(_payload_from_result(result))
+            self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_owner_voice_sample(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
@@ -300,10 +412,16 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
+    def _current_output_dir(self) -> Path:
+        return _ensure_writable_dir(self.config.output_path)
+
     def _serve_output_file(self, path: str) -> None:
-        filename = Path(unquote(path.removeprefix("/outputs/"))).name
-        file_path = self.output_dir / filename
-        if not file_path.exists() or not file_path.is_file():
+        file_path = _resolve_output_file_path(
+            path,
+            self.config.output_root_path,
+            self.config.output_path,
+        )
+        if not file_path or not file_path.exists() or not file_path.is_file():
             self._send_json({"error": "Output file not found"}, HTTPStatus.NOT_FOUND)
             return
         suffix = file_path.suffix.lower()
@@ -323,6 +441,7 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_html(self, body: str) -> None:
+        self._request_session_id({})
         data = body.encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -331,12 +450,33 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
+        active_session_id = getattr(self, "_active_session_id", None)
+        if active_session_id and "session_id" not in payload:
+            payload = {**payload, "session_id": active_session_id}
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if active_session_id:
+            self.send_header(SESSION_ID_HEADER, active_session_id)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+
+def _new_session_id() -> str:
+    return f"lumi_{uuid.uuid4().hex}"
+
+
+def _clean_session_id(value: str | None) -> str | None:
+    raw = str(value or "").strip()[:120]
+    cleaned = "".join(
+        char for char in raw if char.isascii() and (char.isalnum() or char in "-_.:")
+    )
+    return cleaned or None
+
+
+def _normalize_session_id(value: str | None) -> str:
+    return _clean_session_id(value) or "default"
 
 
 def _is_safe_owner_name(value: str) -> bool:
@@ -350,50 +490,92 @@ def _is_safe_owner_name(value: str) -> bool:
     )
 
 
-def _payload_from_result(result) -> dict:
+def _payload_from_result(result, output_root: str | Path) -> dict:
     payload = {
         "input_text": result.input_text,
         "response_text": result.response_text,
-        "audio_url": _output_file_url(result.audio_path),
-        "audio_text_url": _sidecar_url(result.audio_path, ".txt"),
-        "audio_metadata_url": _sidecar_url(result.audio_path, ".json"),
+        "audio_url": _output_file_url(result.audio_path, output_root),
+        "audio_text_url": _sidecar_url(result.audio_path, ".txt", output_root),
+        "audio_metadata_url": _sidecar_url(result.audio_path, ".json", output_root),
         "tts_engine": result.tts_engine,
     }
     if result.input_audio_path:
-        _attach_input_audio_links(payload, result.input_audio_path)
+        _attach_input_audio_links(payload, result.input_audio_path, output_root)
     return payload
 
 
-def _attach_input_audio_links(payload: dict, audio_path: str | Path | None) -> None:
+def _attach_input_audio_links(payload: dict, audio_path: str | Path | None, output_root: str | Path) -> None:
     if not audio_path:
         return
-    payload["input_audio_url"] = _output_file_url(audio_path)
-    payload["input_text_url"] = _sidecar_url(audio_path, ".txt")
-    payload["input_metadata_url"] = _sidecar_url(audio_path, ".json")
+    payload["input_audio_url"] = _output_file_url(audio_path, output_root)
+    payload["input_text_url"] = _sidecar_url(audio_path, ".txt", output_root)
+    payload["input_metadata_url"] = _sidecar_url(audio_path, ".json", output_root)
 
 
-def _output_file_url(path: str | Path | None) -> str | None:
+def _output_file_url(path: str | Path | None, output_root: str | Path) -> str | None:
     if not path:
         return None
-    return f"/outputs/{html.escape(Path(path).name)}"
+    file_path = Path(path)
+    root_path = Path(output_root)
+    try:
+        relative_path = file_path.resolve().relative_to(root_path.resolve())
+    except (OSError, ValueError):
+        try:
+            relative_path = file_path.relative_to(root_path)
+        except ValueError:
+            relative_path = Path(file_path.name)
+    return "/outputs/" + quote(relative_path.as_posix(), safe="/")
 
 
-def _sidecar_url(audio_path: str | Path | None, suffix: str) -> str | None:
+def _sidecar_url(audio_path: str | Path | None, suffix: str, output_root: str | Path) -> str | None:
     if not audio_path:
         return None
     sidecar_path = Path(audio_path).with_suffix(suffix)
     if not sidecar_path.exists():
         return None
-    return _output_file_url(sidecar_path)
+    return _output_file_url(sidecar_path, output_root)
+
+
+def _resolve_output_file_path(
+    request_path: str,
+    output_root: str | Path,
+    current_output_dir: str | Path,
+) -> Path | None:
+    raw_relative = unquote(request_path.removeprefix("/outputs/")).strip("/")
+    if not raw_relative:
+        return None
+    relative_path = Path(raw_relative)
+    if relative_path.is_absolute() or any(part in {"", ".", ".."} for part in relative_path.parts):
+        return None
+
+    root_path = Path(output_root).resolve()
+    file_path = (root_path / relative_path).resolve()
+    try:
+        file_path.relative_to(root_path)
+    except ValueError:
+        return None
+
+    if not file_path.exists() and len(relative_path.parts) == 1:
+        fallback_path = (Path(current_output_dir) / relative_path.name).resolve()
+        try:
+            fallback_path.relative_to(root_path)
+        except ValueError:
+            return file_path
+        if fallback_path.exists():
+            return fallback_path
+
+    return file_path
 
 
 def run_server(config: LumiConfig, host: str, port: int) -> None:
     pipeline = LumiMvpPipeline(config)
     if config.cuda_visible_devices:
         print(f"CUDA_VISIBLE_DEVICES={config.cuda_visible_devices} (GPU vật lý Lumi được phép dùng)")
+    output_root_dir = config.output_root_path
     output_dir = config.output_path
     output_dir.mkdir(parents=True, exist_ok=True)
     config.owner_voice_path.mkdir(parents=True, exist_ok=True)
+    print(f"Output hôm nay: {output_dir} (root: {output_root_dir})")
 
     print("Đang nạp AI models lên GPU (warm-up), vui lòng đợi...")
     if hasattr(pipeline.asr, "_load_pipeline"):
@@ -402,14 +584,22 @@ def run_server(config: LumiConfig, host: str, port: int) -> None:
         pipeline.response_generator._load_model()
     if hasattr(pipeline.tts, "_load_engine"):
         pipeline.tts._load_engine()
+    emotion_warmup = getattr(pipeline.emotion_classifier, "warmup", None)
+    if callable(emotion_warmup):
+        print("Đang nạp emotion classifier HuggingFace...")
+        if emotion_warmup():
+            print("Nạp emotion classifier hoàn tất!")
+        else:
+            print("Không nạp được emotion classifier HuggingFace, tạm dùng heuristic emotion.")
     print("Nạp model hoàn tất!")
 
     class Handler(LumiWebHandler):
         pass
 
     Handler.pipeline = pipeline
+    Handler.session_manager = LumiSessionManager(pipeline)
     Handler.config = config
-    Handler.output_dir = output_dir
+    Handler.output_dir = output_root_dir
 
     server = ThreadingHTTPServer((host, port), Handler)
     url_host = "127.0.0.1" if host in {"0.0.0.0", ""} else host
@@ -428,9 +618,13 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--response-provider", choices=["qwen", "template"], default=None)
-    parser.add_argument("--tts-provider", choices=["vieneu", "no-audio", "edge-tts"], default=None)
+    parser.add_argument("--tts-provider", choices=available_tts_providers(), default=None)
+    parser.add_argument("--tts-reference-wav", default=None, help="Giọng mẫu cho provider clone voice như zipvoice.")
+    parser.add_argument("--tts-reference-text", default=None, help="Transcript chính xác của file --tts-reference-wav.")
+    parser.add_argument("--tts-reference-speaker", default=None, help="Tên profile trong owner_voices dùng làm giọng mẫu cho zipvoice.")
     parser.add_argument("--asr-provider", choices=["phowhisper"], default=None)
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--output-subdir", default=None, help="Thư mục con dưới output-dir. Mặc định là ngày hiện tại; dùng 'test' khi chạy thử.")
     parser.add_argument("--cuda-visible-devices", default=None, help="GPU vật lý mà Lumi được phép thấy, mặc định 1. Ví dụ: 1 hoặc 1,2.")
     args = parser.parse_args()
 
@@ -444,17 +638,24 @@ def main() -> None:
         asr_model=base.asr_model,
         llm_model=base.llm_model,
         speaker_model=base.speaker_model,
+        emotion_model=base.emotion_model,
         asr_provider=args.asr_provider or base.asr_provider,
         response_provider=args.response_provider or base.response_provider,
         tts_provider=args.tts_provider or base.tts_provider,
+        emotion_provider=base.emotion_provider,
         tts_mode=base.tts_mode,
         tts_voice=base.tts_voice,
+        tts_reference_wav=args.tts_reference_wav or base.tts_reference_wav,
+        tts_reference_text=args.tts_reference_text or base.tts_reference_text,
+        tts_reference_speaker=args.tts_reference_speaker or base.tts_reference_speaker,
         llm_max_new_tokens=base.llm_max_new_tokens,
         llm_voice_max_new_tokens=base.llm_voice_max_new_tokens,
         llm_temperature=base.llm_temperature,
         llm_repetition_penalty=base.llm_repetition_penalty,
         llm_no_repeat_ngram_size=base.llm_no_repeat_ngram_size,
+        emotion_min_confidence=base.emotion_min_confidence,
         output_dir=args.output_dir or base.output_dir,
+        output_subdir=args.output_subdir if args.output_subdir is not None else base.output_subdir,
         owner_voice_dir=base.owner_voice_dir,
         cuda_visible_devices=args.cuda_visible_devices if args.cuda_visible_devices is not None else base.cuda_visible_devices,
     )
@@ -677,6 +878,20 @@ INDEX_HTML = r"""<!doctype html>
     const ownerResetBtn = document.getElementById('ownerResetBtn');
     const ownerEnrollStatus = document.getElementById('ownerEnrollStatus');
     const conversation = document.getElementById('conversation');
+    const SESSION_STORAGE_KEY = 'lumiSessionId.v2';
+
+    function makeSessionId() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+      return `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    let sessionId = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!sessionId) {
+      sessionId = makeSessionId();
+      sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+    }
 
     let stream = null;
     let audioContext = null;
@@ -689,6 +904,14 @@ INDEX_HTML = r"""<!doctype html>
     let textIsProcessing = false;
     let voiceIsBuffered = false;
     let voiceFlushTimer = null;
+    let voiceBufferStartedAt = null;
+    let voiceHadBufferedBeforeCurrentUtterance = false;
+    let voiceFlushInFlight = false;
+    let voiceFlushQueued = false;
+
+    const VOICE_MAX_BUFFER_MS = 2200;
+    const VOICE_MIN_FLUSH_MS = 100;
+    const VOICE_COMPLETE_FLUSH_MS = 250;
 
     let isVoiceActive = false;
     let voiceIsSpeaking = false;
@@ -730,7 +953,7 @@ INDEX_HTML = r"""<!doctype html>
         } catch (err) {
           setStatus(err.message);
         }
-      }, 2500);
+      }, 1000);
     }
 
     class AudioQueue {
@@ -775,11 +998,26 @@ INDEX_HTML = r"""<!doctype html>
       }
     }
 
-    function resetVoiceFlushTimer(waitMs = 2500) {
+    function resetVoiceFlushTimer(waitMs = 1700) {
       if (voiceFlushTimer) clearTimeout(voiceFlushTimer);
-      if (!voiceIsBuffered) return;
+      if (!voiceIsBuffered) {
+        voiceBufferStartedAt = null;
+        return;
+      }
+      if (voiceBufferStartedAt === null) voiceBufferStartedAt = Date.now();
+      const elapsedMs = Date.now() - voiceBufferStartedAt;
+      const forcedRemainingMs = Math.max(VOICE_MIN_FLUSH_MS, VOICE_MAX_BUFFER_MS - elapsedMs);
+      const effectiveWaitMs = Math.min(waitMs, forcedRemainingMs);
       voiceFlushTimer = setTimeout(async () => {
+        voiceFlushTimer = null;
+        if (voiceFlushInFlight) {
+          voiceFlushQueued = true;
+          return;
+        }
+
         voiceIsBuffered = false;
+        voiceBufferStartedAt = null;
+        voiceFlushInFlight = true;
         try {
           setStatus('Đang phản hồi voice (Streaming)...');
           const botP = botPronounInput.value.trim() || 'Lumi';
@@ -794,7 +1032,7 @@ INDEX_HTML = r"""<!doctype html>
           const response = await fetch('/api/voice_stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bot_pronoun: botP, user_pronoun: userP })
+            body: JSON.stringify({ session_id: sessionId, bot_pronoun: botP, user_pronoun: userP })
           });
           
           const reader = response.body.getReader();
@@ -845,8 +1083,14 @@ INDEX_HTML = r"""<!doctype html>
           setStatus(isVoiceActive ? 'Voice Chat đang bật (Micro luôn mở)' : 'Sẵn sàng');
         } catch (err) {
           setStatus(err.message);
+        } finally {
+          voiceFlushInFlight = false;
+          if (voiceFlushQueued || voiceIsBuffered) {
+            voiceFlushQueued = false;
+            if (voiceIsBuffered) resetVoiceFlushTimer(VOICE_MIN_FLUSH_MS);
+          }
         }
-      }, waitMs);
+      }, effectiveWaitMs);
     }
 
     function setStatus(text) {
@@ -917,7 +1161,7 @@ INDEX_HTML = r"""<!doctype html>
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, session_id: sessionId })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Request failed');
@@ -1078,9 +1322,22 @@ INDEX_HTML = r"""<!doctype html>
 
     async function handleVoiceUtterance(wavBlob) {
       if (voiceIsProcessing) return;
+      const hadBufferedBeforeRequest = voiceHadBufferedBeforeCurrentUtterance || voiceIsBuffered;
+      voiceHadBufferedBeforeCurrentUtterance = false;
       voiceIsProcessing = true;
       resetVoiceCapture();
-      if (voiceFlushTimer) clearTimeout(voiceFlushTimer);
+      if (voiceFlushInFlight || (currentAudioQueue && currentAudioQueue.isPlaying)) {
+        if (currentAudioQueue) currentAudioQueue.stop();
+        fetch('/api/interrupt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId })
+        }).catch(() => {});
+      }
+      if (voiceFlushTimer) {
+        clearTimeout(voiceFlushTimer);
+        voiceFlushTimer = null;
+      }
       voiceIsBuffered = false;
       try {
         setStatus('Đang phân tích giọng nói...');
@@ -1097,7 +1354,8 @@ INDEX_HTML = r"""<!doctype html>
             'Content-Type': 'audio/wav',
             'X-Bot-Pronoun': encodeURIComponent(botP),
             'X-User-Pronoun': encodeURIComponent(userP),
-            'X-Owner-Name': encodeURIComponent(speakerName)
+            'X-Owner-Name': encodeURIComponent(speakerName),
+            'X-Session-Id': encodeURIComponent(sessionId)
           },
           body: wavBlob
         });
@@ -1109,10 +1367,19 @@ INDEX_HTML = r"""<!doctype html>
         if (data.status === 'buffered') {
           setStatus('Lumi đang chờ bạn nói thêm...');
           voiceIsBuffered = true;
-          resetVoiceFlushTimer(data.wait_ms || 2500);
+          const waitMs = data.is_complete ? Math.min(data.wait_ms || VOICE_COMPLETE_FLUSH_MS, VOICE_COMPLETE_FLUSH_MS) : (data.wait_ms || 1700);
+          resetVoiceFlushTimer(waitMs);
         } else if (data.status === 'ignored') {
-          setStatus(data.reason ? `Bỏ qua: ${data.reason}` : 'Sẵn sàng (bỏ qua do lẩm bẩm hoặc ồn)');
+          if (hadBufferedBeforeRequest) {
+            voiceIsBuffered = true;
+            setStatus('Lumi sẽ trả lời phần bạn vừa nói trước đó...');
+            resetVoiceFlushTimer(VOICE_MIN_FLUSH_MS);
+          } else {
+            voiceBufferStartedAt = null;
+            setStatus(data.reason ? `Bỏ qua: ${data.reason}` : 'Sẵn sàng (bỏ qua do lẩm bẩm hoặc ồn)');
+          }
         } else if (data.response_text) {
+          voiceBufferStartedAt = null;
           if (currentAudioQueue && currentAudioQueue.isPlaying) currentAudioQueue.stop();
           addMessage('Lumi', data.response_text, data.audio_url, responseDetails(data));
           if (data.audio_url) currentAudioQueue.add(data.audio_url);
@@ -1177,13 +1444,18 @@ INDEX_HTML = r"""<!doctype html>
               // Bất cứ khi nào người dùng bắt đầu nói, gửi tín hiệu ngắt lời
               // để dọn dẹp các luồng sinh chữ/âm thanh đang chạy dang dở trên server
               console.log("Người dùng bắt đầu nói, gửi tín hiệu interrupt.");
-              fetch('/api/interrupt', { method: 'POST' }).catch(e => {});
+              fetch('/api/interrupt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+              }).catch(e => {});
               
               if (currentAudioQueue && currentAudioQueue.isPlaying) {
                  currentAudioQueue.stop();
               }
               
               if (voiceFlushTimer) {
+                voiceHadBufferedBeforeCurrentUtterance = voiceIsBuffered;
                 clearTimeout(voiceFlushTimer);
                 voiceFlushTimer = null;
                 voiceIsBuffered = false;
@@ -1244,6 +1516,25 @@ INDEX_HTML = r"""<!doctype html>
       }
     });
 
+    function normalizeCommandText(text) {
+      return text.normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'd')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function isStopTextCommand(text) {
+      const normalized = normalizeCommandText(text);
+      return /(^|\s)(dung|ngung|thoi)\s+(noi|tra loi|lai|di|thoi)(\s|$)/.test(normalized)
+        || /(^|\s)(dung|ngung)\s+noi\s+(nua|lai|di)(\s|$)/.test(normalized)
+        || /(^|\s)(im lang|im di|giu im lang)(\s|$)/.test(normalized)
+        || /(^|\s)(stop|cancel|huy)(\s|$)/.test(normalized);
+    }
+
     // TEXT CHAT GUARDRAIL:
     // Keep typed-text handling separate from Voice Chat. This path should only
     // buffer user text and let the text idle timer call /api/flush; do not add
@@ -1251,6 +1542,14 @@ INDEX_HTML = r"""<!doctype html>
     sendTextBtn.addEventListener('click', async () => {
       const text = textInput.value.trim();
       if (!text) return;
+      const isStopCommand = isStopTextCommand(text);
+      if (isStopCommand) {
+        if (voiceAudioElement) {
+          voiceAudioElement.pause();
+          voiceAudioElement = null;
+        }
+        if (currentAudioQueue) currentAudioQueue.stop();
+      }
       
       addMessage('Bạn', text);
       textInput.value = '';
@@ -1293,7 +1592,7 @@ INDEX_HTML = r"""<!doctype html>
       textIsProcessing = false;
       try {
         await postJson('/api/clear', {});
-        addMessage('Lumi', 'Xin chào, tôi là Lumi. Bạn cần tôi giúp gì không?');
+        addMessage('Lumi', 'Xin chào, Lumi đây. Bạn cần Lumi giúp gì không?');
         setStatus('Sẵn sàng');
       } catch (error) {
         console.error("Lỗi khi xóa lịch sử:", error);
@@ -1301,7 +1600,7 @@ INDEX_HTML = r"""<!doctype html>
     });
 
     window.addEventListener('DOMContentLoaded', () => {
-      addMessage('Lumi', 'Xin chào, tôi là Lumi. Bạn cần tôi giúp gì không?');
+      addMessage('Lumi', 'Xin chào, Lumi đây. Bạn cần Lumi giúp gì không?');
     });
 
     function resetVoiceCapture() {
@@ -1326,6 +1625,13 @@ INDEX_HTML = r"""<!doctype html>
     function cleanupAudioGraph() {
       resetVoiceCapture();
       voiceIsProcessing = false;
+      voiceIsBuffered = false;
+      voiceBufferStartedAt = null;
+      voiceHadBufferedBeforeCurrentUtterance = false;
+      if (voiceFlushTimer) {
+        clearTimeout(voiceFlushTimer);
+        voiceFlushTimer = null;
+      }
       if (processor) processor.disconnect();
       if (source) source.disconnect();
       if (zeroGain) zeroGain.disconnect();
