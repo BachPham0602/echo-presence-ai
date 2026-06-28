@@ -10,6 +10,7 @@
 import type { PipelineState } from "@/types/pipeline";
 import type { SpeakerProfile } from "@/types/speaker";
 import type { EmotionReading } from "@/types/emotion";
+import { getSelectedVoice } from "@/store/voiceSettings";
 
 import { mockAddresseeDetector } from "./addresseeDetection";
 import { mockSemanticVAD } from "./semanticVAD";
@@ -158,6 +159,7 @@ export async function runLumiTurn(
       text: transcript,
       bot_pronoun: "Lumi",
       user_pronoun: "bạn",
+      owner_name: getSelectedVoice(),
       session_id: sessionId,
     });
   } catch (error) {
@@ -177,7 +179,7 @@ export async function submitVoiceTranscript(
     text,
     bot_pronoun: "Lumi",
     user_pronoun: "bạn",
-    owner_name: "bạn",
+    owner_name: getSelectedVoice(),
     session_id: sessionId,
   });
 }
@@ -192,7 +194,7 @@ export async function submitVoiceAudioFallback(
       "Content-Type": "audio/wav",
       "X-Bot-Pronoun": encodeURIComponent("Lumi"),
       "X-User-Pronoun": encodeURIComponent("bạn"),
-      "X-Owner-Name": encodeURIComponent("bạn"),
+      "X-Owner-Name": encodeURIComponent(getSelectedVoice()),
       "X-Session-Id": encodeURIComponent(sessionId ?? ""),
     },
     body: audio,
