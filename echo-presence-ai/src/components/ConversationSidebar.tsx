@@ -2,6 +2,7 @@ import { Plus, X, Settings, MoreHorizontal, Share2, Pencil, Trash2 } from "lucid
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { groupByDay, type Conversation } from "@/store/conversations";
+import { getSelectedVoice, subscribeSelectedVoice } from "@/store/voiceSettings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +55,11 @@ export function ConversationSidebar({
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState(() => getSelectedVoice());
+
+  useEffect(() => {
+    return subscribeSelectedVoice(setSelectedVoice);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -89,17 +95,15 @@ export function ConversationSidebar({
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
+        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${open ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
         onClick={onClose}
         aria-hidden
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[86vw] max-w-[300px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl transition-transform duration-300 ease-out ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-[86vw] max-w-[300px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl transition-transform duration-300 ease-out ${open ? "translate-x-0" : "-translate-x-full"
+          }`}
         aria-hidden={!open}
       >
         <div className="flex items-center justify-between px-3 pt-3 pb-1">
@@ -144,11 +148,10 @@ export function ConversationSidebar({
                   return (
                     <li key={conv.id}>
                       <div
-                        className={`group relative flex h-11 items-center gap-2 rounded-lg pl-3 pr-1 transition ${
-                          isActive
+                        className={`group relative flex h-11 items-center gap-2 rounded-lg pl-3 pr-1 transition ${isActive
                             ? "bg-sidebar-accent"
                             : "hover:bg-sidebar-accent/60"
-                        }`}
+                          }`}
                       >
                         <button
                           type="button"
@@ -167,11 +170,10 @@ export function ConversationSidebar({
                               type="button"
                               aria-label="Tuỳ chọn"
                               onClick={(e) => e.stopPropagation()}
-                              className={`shrink-0 rounded-md p-1.5 text-sidebar-foreground/60 transition hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground ${
-                                isActive
+                              className={`shrink-0 rounded-md p-1.5 text-sidebar-foreground/60 transition hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground ${isActive
                                   ? "opacity-100"
                                   : "opacity-0 group-hover:opacity-100 focus:opacity-100"
-                              }`}
+                                }`}
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
@@ -210,7 +212,7 @@ export function ConversationSidebar({
             className="flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm text-sidebar-foreground/80 transition hover:bg-sidebar-accent"
           >
             <Settings className="h-4 w-4 shrink-0" />
-            <span className="truncate">Cài đặt giọng Lumi</span>
+            <span className="truncate">Cài đặt giọng ({selectedVoice})</span>
           </button>
         </div>
       </aside>

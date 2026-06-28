@@ -1,3 +1,5 @@
 [console_scripts]
 lumi-demo = lumi.demo_cli:main
 lumi-mvp = lumi.mvp_cli:main
+lumi-prefetch = lumi.prefetch_models:main
+lumi-web = lumi.web_app:main
