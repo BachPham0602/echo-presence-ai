@@ -38,10 +38,34 @@ export interface OwnerVoiceProfile {
   sample_count: number;
 }
 
-export async function fetchAvailableVoices(): Promise<OwnerVoiceProfile[]> {
+const FALLBACK: OwnerVoiceProfile[] = [{ name: DEFAULT_VOICE, sample_count: 0 }];
+
+export interface VoicesResult {
+  voices: OwnerVoiceProfile[];
+  error?: string;
+  usingFallback: boolean;
+}
+
+export async function fetchAvailableVoices(): Promise<VoicesResult> {
   const base = import.meta.env.VITE_LUMI_API_BASE ?? "";
-  const res = await fetch(`${base}/api/speakers`);
-  if (!res.ok) throw new Error(`/api/speakers ${res.status}`);
-  const data = (await res.json()) as { speakers?: OwnerVoiceProfile[] };
-  return data.speakers ?? [];
+  const endpoints = ["/api/speakers", "/api/voices", "/api/owner_voices"];
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(`${base}${ep}`);
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        speakers?: OwnerVoiceProfile[];
+        voices?: OwnerVoiceProfile[];
+      };
+      const list = data.speakers ?? data.voices ?? [];
+      if (list.length > 0) return { voices: list, usingFallback: false };
+    } catch {
+      /* try next */
+    }
+  }
+  return {
+    voices: FALLBACK,
+    usingFallback: true,
+    error: "Không kết nối được backend giọng nói — đang dùng danh sách mặc định.",
+  };
 }
