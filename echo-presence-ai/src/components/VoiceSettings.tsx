@@ -17,19 +17,21 @@ export function VoiceSettings({ open, onClose }: VoiceSettingsProps) {
   const [voices, setVoices] = useState<OwnerVoiceProfile[]>([]);
   const [selected, setSelected] = useState<string>(() => getSelectedVoice());
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const list = await fetchAvailableVoices();
-      setVoices(list);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không tải được danh sách giọng");
-    } finally {
-      setLoading(false);
+    setWarning(null);
+    const result = await fetchAvailableVoices();
+    setVoices(result.voices);
+    if (result.usingFallback && result.error) setWarning(result.error);
+    // Ensure the currently selected voice is still valid; else pick the first.
+    if (result.voices.length > 0 && !result.voices.find((v) => v.name === selected)) {
+      const next = result.voices[0].name;
+      setSelected(next);
+      setSelectedVoice(next);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -78,9 +80,9 @@ export function VoiceSettings({ open, onClose }: VoiceSettingsProps) {
           </div>
         </div>
 
-        {error && (
-          <p className="mb-3 rounded-md bg-red-500/15 px-3 py-2 text-xs text-red-200">
-            {error}
+        {warning && (
+          <p className="mb-3 rounded-md bg-amber-500/15 px-3 py-2 text-xs text-amber-100">
+            {warning}
           </p>
         )}
 
@@ -119,10 +121,17 @@ export function VoiceSettings({ open, onClose }: VoiceSettingsProps) {
           })}
         </ul>
 
-        <p className="mt-4 text-[11px] text-white/45">
-          Thêm giọng mới: tạo thư mục <code>owner_voices/&lt;Tên&gt;/</code> rồi đặt
-          các file .wav/.mp3 mẫu vào đó.
-        </p>
+        <div className="mt-4 space-y-1.5 text-[11px] leading-relaxed text-white/55">
+          <p>
+            Mỗi thư mục con trong <code>owner_voices/</code> là một người nói. Tên
+            thư mục chính là tên Lumi dùng để gọi người đó.
+          </p>
+          <p>
+            Nên dùng <b>4–6 file WAV</b> mỗi người, mỗi file ~3–5 giây nói rõ,
+            gần micro, ít nhiễu. Sau khi thêm/đổi file mẫu, bấm nút làm mới hoặc
+            refresh trình duyệt.
+          </p>
+        </div>
       </div>
     </div>
   );
