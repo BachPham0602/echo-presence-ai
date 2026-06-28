@@ -121,10 +121,17 @@ export function VoiceSettings({ open, onClose }: VoiceSettingsProps) {
           })}
         </ul>
 
-        <p className="mt-4 text-[11px] text-white/45">
-          Thêm giọng mới: tạo thư mục <code>owner_voices/&lt;Tên&gt;/</code> rồi đặt
-          các file .wav/.mp3 mẫu vào đó.
-        </p>
+        <div className="mt-4 space-y-1.5 text-[11px] leading-relaxed text-white/55">
+          <p>
+            Mỗi thư mục con trong <code>owner_voices/</code> là một người nói. Tên
+            thư mục chính là tên Lumi dùng để gọi người đó.
+          </p>
+          <p>
+            Nên dùng <b>4–6 file WAV</b> mỗi người, mỗi file ~3–5 giây nói rõ,
+            gần micro, ít nhiễu. Sau khi thêm/đổi file mẫu, bấm nút làm mới hoặc
+            refresh trình duyệt.
+          </p>
+        </div>
       </div>
     </div>
   );
