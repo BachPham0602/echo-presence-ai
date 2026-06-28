@@ -37,6 +37,7 @@ interface ConversationSidebarProps {
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onOpenSettings?: () => void;
 }
 
 export function ConversationSidebar({
