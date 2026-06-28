@@ -203,10 +203,14 @@ export function ConversationSidebar({
         <div className="border-t border-sidebar-border px-3 py-3">
           <button
             type="button"
+            onClick={() => {
+              onOpenSettings?.();
+              onClose();
+            }}
             className="flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm text-sidebar-foreground/80 transition hover:bg-sidebar-accent"
           >
             <Settings className="h-4 w-4 shrink-0" />
-            <span className="truncate">Cài đặt</span>
+            <span className="truncate">Cài đặt giọng Lumi</span>
           </button>
         </div>
       </aside>
