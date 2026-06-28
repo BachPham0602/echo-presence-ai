@@ -80,9 +80,9 @@ export function VoiceSettings({ open, onClose }: VoiceSettingsProps) {
           </div>
         </div>
 
-        {error && (
-          <p className="mb-3 rounded-md bg-red-500/15 px-3 py-2 text-xs text-red-200">
-            {error}
+        {warning && (
+          <p className="mb-3 rounded-md bg-amber-500/15 px-3 py-2 text-xs text-amber-100">
+            {warning}
           </p>
         )}
 
