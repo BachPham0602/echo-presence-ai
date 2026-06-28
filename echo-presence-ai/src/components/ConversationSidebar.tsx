@@ -49,6 +49,7 @@ export function ConversationSidebar({
   onSelect,
   onDelete,
   onRename,
+  onOpenSettings,
 }: ConversationSidebarProps) {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameValue, setRenameValue] = useState("");
