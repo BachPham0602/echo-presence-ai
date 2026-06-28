@@ -179,15 +179,6 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Cài đặt giọng Lumi"
-            className="glass-button h-11 w-11"
-            title="Cài đặt giọng"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
             onClick={() => setDevOpen((v) => !v)}
             aria-label="Bảng test biểu cảm"
             className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
