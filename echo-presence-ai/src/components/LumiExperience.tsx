@@ -256,6 +256,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           }
         }}
         onRename={(id, title) => conversations.renameConversation(id, title)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <MessengerChat
