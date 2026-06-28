@@ -17,19 +17,21 @@ export function VoiceSettings({ open, onClose }: VoiceSettingsProps) {
   const [voices, setVoices] = useState<OwnerVoiceProfile[]>([]);
   const [selected, setSelected] = useState<string>(() => getSelectedVoice());
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const list = await fetchAvailableVoices();
-      setVoices(list);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không tải được danh sách giọng");
-    } finally {
-      setLoading(false);
+    setWarning(null);
+    const result = await fetchAvailableVoices();
+    setVoices(result.voices);
+    if (result.usingFallback && result.error) setWarning(result.error);
+    // Ensure the currently selected voice is still valid; else pick the first.
+    if (result.voices.length > 0 && !result.voices.find((v) => v.name === selected)) {
+      const next = result.voices[0].name;
+      setSelected(next);
+      setSelectedVoice(next);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
