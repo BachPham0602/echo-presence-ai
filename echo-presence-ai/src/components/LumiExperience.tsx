@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { Menu, ArrowLeft, Smile } from "lucide-react";
+import { Menu, ArrowLeft, Smile, Settings } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import { LumiCalmFace } from "@/components/lumi/LumiCalmFace";
@@ -10,6 +10,7 @@ import { MicButton } from "@/components/MicButton";
 import { StatusIndicator } from "@/components/StatusIndicator";
 
 import { ConversationSidebar } from "@/components/ConversationSidebar";
+import { VoiceSettings } from "@/components/VoiceSettings";
 import { useLumiPipeline } from "@/hooks/useLumiPipeline";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useConversations } from "@/store/conversations";
@@ -68,6 +69,7 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [override, setOverride] = useState<ExpressionName | null>(null);
 
   // Sync the global ExpressionManager with the pipeline's auto-detected state.
@@ -174,16 +176,29 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
             <Menu className="h-5 w-5" />
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setDevOpen((v) => !v)}
-          aria-label="Bảng test biểu cảm"
-          className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
-          title="Dev: Expression panel"
-        >
-          <Smile className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Cài đặt giọng Lumi"
+            className="glass-button h-11 w-11"
+            title="Cài đặt giọng"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setDevOpen((v) => !v)}
+            aria-label="Bảng test biểu cảm"
+            className="glass-button h-11 w-11 opacity-40 hover:opacity-100"
+            title="Dev: Expression panel"
+          >
+            <Smile className="h-5 w-5" />
+          </button>
+        </div>
       </header>
+
+      <VoiceSettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {devOpen && (
         <div className="absolute right-4 top-20 z-40 grid w-56 grid-cols-2 gap-1.5 rounded-2xl border border-white/15 bg-black/60 p-3 text-xs text-white backdrop-blur-md">
