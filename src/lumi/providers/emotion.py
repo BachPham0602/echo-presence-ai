@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from lumi.config import LumiConfig
 from lumi.models import EmotionDecision
+from lumi.latency_log import ModelTimer
 from lumi.providers.addressee import _normalize
 
 
@@ -69,7 +70,8 @@ class HuggingFaceEmotionClassifier:
             )
         try:
             pipe = self._load_pipeline()
-            raw = pipe(text)
+            with ModelTimer(f"emotion/{self.config.emotion_model}", method="classify", detail=text[:80]):
+                raw = pipe(text)
             choices = _flatten_classifier_output(raw)
             if not choices:
                 return self._fallback.classify(text)

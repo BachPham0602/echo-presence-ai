@@ -1,6 +1,3 @@
-"""Lumi companion demo package."""
+"""Lumi companion package."""
 
-from .pipeline import LumiPipeline
-
-__all__ = ["LumiPipeline"]
-
+__all__: list[str] = []

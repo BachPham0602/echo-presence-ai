@@ -3,16 +3,18 @@ import { Mic, MicOff } from "lucide-react";
 interface MicButtonProps {
   active: boolean;
   muted: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }
 
-export function MicButton({ active, muted, onClick }: MicButtonProps) {
+export function MicButton({ active, muted, disabled = false, onClick }: MicButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={muted ? "Bật micro" : "Tắt micro"}
-      className={`group relative flex h-16 w-16 items-center justify-center rounded-full transition-all duration-300 ${
+      className={`group relative flex h-16 w-16 items-center justify-center rounded-full transition-all duration-300 disabled:opacity-60 ${
         muted
           ? "bg-muted/60 text-muted-foreground"
           : "bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-[0_10px_40px_-10px_oklch(0.7_0.15_45_/_0.6)]"

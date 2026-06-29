@@ -23,12 +23,11 @@ class LumiConfig:
 
     asr_model: str = "vinai/PhoWhisper-small"
     llm_model: str = "Qwen/Qwen2.5-3B-Instruct"
-    speaker_model: str = "speechbrain/spkrec-ecapa-voxceleb"
     emotion_model: str = DEFAULT_EMOTION_MODEL
 
     asr_provider: str = "phowhisper"
     response_provider: str = "qwen"
-    tts_provider: str = "zipvoice" # "edge-tts" hoặc "zipvoice"
+    tts_provider: str = "edge-tts" # "edge-tts" hoặc "zipvoice"
     emotion_provider: str = "hf"
 
     tts_mode: str = "standard"
@@ -45,7 +44,7 @@ class LumiConfig:
     output_dir: str = "outputs"
     output_subdir: str | None = None
     owner_voice_dir: str = "owner_voices"
-    cuda_visible_devices: str | None = "1"
+    cuda_visible_devices: str | None = "0"
 
     @classmethod
     def from_env(cls) -> "LumiConfig":
@@ -61,7 +60,6 @@ class LumiConfig:
             debug=os.getenv("LUMI_DEBUG", "1") not in {"0", "false", "False"},
             asr_model=os.getenv("LUMI_ASR_MODEL", cls.asr_model),
             llm_model=os.getenv("LUMI_LLM_MODEL", cls.llm_model),
-            speaker_model=os.getenv("LUMI_SPEAKER_MODEL", cls.speaker_model),
             emotion_model=os.getenv("LUMI_EMOTION_MODEL", cls.emotion_model),
             asr_provider=os.getenv("LUMI_ASR_PROVIDER", cls.asr_provider),
             response_provider=os.getenv("LUMI_RESPONSE_PROVIDER", cls.response_provider),

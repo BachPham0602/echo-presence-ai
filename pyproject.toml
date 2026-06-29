@@ -14,9 +14,8 @@ dependencies = []
 vad = ["silero-vad", "onnxruntime"]
 asr = ["transformers", "accelerate", "torch", "torchaudio", "soundfile"]
 llm = ["transformers", "accelerate", "torch"]
-tts = ["vieneu", "edge-tts"]
+tts = ["edge-tts"]
 audio = ["sounddevice", "soundfile"]
-speaker = ["speechbrain", "torchaudio"]
 dev = ["pytest"]
 all-models = [
     "transformers",
@@ -25,14 +24,10 @@ all-models = [
     "torchaudio",
     "soundfile",
     "sounddevice",
-    "vieneu",
     "edge-tts",
-    "speechbrain",
 ]
 
 [project.scripts]
-lumi-demo = "lumi.demo_cli:main"
-lumi-mvp = "lumi.mvp_cli:main"
 lumi-web = "lumi.web_app:main"
 lumi-prefetch = "lumi.prefetch_models:main"
 

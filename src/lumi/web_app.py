@@ -66,7 +66,6 @@ class LumiSessionManager:
             tts=self.prototype.tts,
             turn_detector=self.prototype.turn_detector,
             addressee_detector=self.prototype.addressee_detector,
-            speaker_verifier=self.prototype.speaker_verifier,
             emotion_classifier=self.prototype.emotion_classifier,
         )
 
@@ -223,24 +222,52 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_voice_text(self) -> None:
+        from lumi.latency_log import LatencyTimer
+
+        timer = LatencyTimer("api_voice_text")
         payload = self._read_json()
         text = str(payload.get("text", "")).strip()
         bot_pronoun = payload.get("bot_pronoun")
         user_pronoun = payload.get("user_pronoun")
         owner_name = payload.get("owner_name") or user_pronoun
-        print(f"[DEBUG] /api/voice_text nhận được: '{text}'")
+        print(f"[DEBUG] /api/voice_text nhận được: '{text}' (stt_source=web_speech)")
         if not text:
             self._send_json({"error": "Voice text rỗng."}, HTTPStatus.BAD_REQUEST)
             return
         voice_user_pronoun = user_pronoun or owner_name
         session = self._session_for_payload(payload)
-        print(f"[DEBUG] /api/voice_text đang chờ session.lock...")
         with session.lock:
             result = session.pipeline.handle_voice_transcript(
                 text, bot_pronoun=bot_pronoun, user_pronoun=voice_user_pronoun
             )
+            if (
+                isinstance(result, dict)
+                and result.get("status") == "buffered"
+                and result.get("is_complete", True)
+                and session.pipeline.voice_buffer
+            ):
+                buffered_snapshot = " ".join(session.pipeline.voice_buffer)
+                print(
+                    f"[DEBUG] Auto-flush voice sau voice_text — "
+                    f"buffer={buffered_snapshot!r}"
+                )
+                flush_result = session.pipeline.flush_voice_chat(
+                    bot_pronoun=bot_pronoun,
+                    user_pronoun=voice_user_pronoun,
+                )
+                if isinstance(flush_result, dict):
+                    if flush_result.get("status") == "empty":
+                        print("[WARN] Auto-flush voice_text trả empty — buffer có thể đã bị xóa")
+                    else:
+                        result = flush_result
+                else:
+                    result = flush_result
+        timer.mark("pipeline")
+        timer.log({"endpoint": "/api/voice_text", "client": self.client_address[0], "stt_source": "web_speech"})
         if isinstance(result, dict):
-            self._send_json(result)
+            payload = dict(result)
+            _attach_response_audio_links(payload, self.config.output_root_path)
+            self._send_json(payload)
         else:
             self._send_json(_payload_from_result(result, self.config.output_root_path))
 
@@ -262,6 +289,9 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_voice_stream(self) -> None:
+        from lumi.latency_log import LatencyTimer
+
+        stream_timer = LatencyTimer("api_voice_stream")
         payload = self._read_json()
         bot_pronoun = payload.get("bot_pronoun")
         user_pronoun = payload.get("user_pronoun")
@@ -271,19 +301,35 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
+        stream_timer.mark("headers")
         
         # Do not hold the session lock for the whole stream, otherwise it blocks /api/interrupt.
         session = self._session_for_payload(payload)
-        generator = session.pipeline.flush_voice_chat_stream(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun, is_timeout=True)
+        generator = session.pipeline.flush_voice_chat_stream(
+            bot_pronoun=bot_pronoun,
+            user_pronoun=user_pronoun,
+            is_timeout=bool(payload.get("is_timeout", False)),
+        )
+        first_chunk = True
         
         try:
             for chunk_data in generator:
+                if first_chunk:
+                    stream_timer.mark("first_sse_chunk")
+                    first_chunk = False
                 data_str = json.dumps(chunk_data, ensure_ascii=False)
                 self.wfile.write(f"data: {data_str}\n\n".encode("utf-8"))
                 self.wfile.flush()
         except Exception as e:
             print(f"[ERROR] Voice Stream error: {e}")
         finally:
+            stream_timer.log(
+                {
+                    "endpoint": "/api/voice_stream",
+                    "client": self.client_address[0],
+                    "note": "SSE localhost — delay chủ yếu từ LLM/TTS GPU, không phải WAN",
+                }
+            )
             # QUAN TRọNG: đóng generator rõ ràng để chắc chắn generation_lock luôn
             # được giải phóng, ngay cả khi client ngắt kết nối giữa chừng (BrokenPipe).
             generator.close()
@@ -318,6 +364,9 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         self._send_json(_payload_from_result(result, self.config.output_root_path))
 
     def _handle_voice_chat(self) -> None:
+        from lumi.latency_log import LatencyTimer
+
+        api_timer = LatencyTimer("api_voice_chat")
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
             self._send_json({"error": "Audio body rỗng."}, HTTPStatus.BAD_REQUEST)
@@ -361,19 +410,54 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             print(f"Lỗi đọc RMS: {e}")
 
         session = self._session_for_payload()
+        voice_user_pronoun = user_pronoun or owner_name
         with session.lock:
             result = session.pipeline.handle_voice_chat(
                 audio_path,
                 bot_pronoun=bot_pronoun,
-                user_pronoun=user_pronoun,
+                user_pronoun=voice_user_pronoun,
                 owner_name=owner_name,
             )
+            if (
+                isinstance(result, dict)
+                and result.get("status") == "buffered"
+                and result.get("is_complete", True)
+                and session.pipeline.voice_buffer
+            ):
+                buffered_snapshot = " ".join(session.pipeline.voice_buffer)
+                print(
+                    f"[DEBUG] Auto-flush voice ngay sau voice_chat — "
+                    f"buffer={buffered_snapshot!r}"
+                )
+                flush_result = session.pipeline.flush_voice_chat(
+                    bot_pronoun=bot_pronoun,
+                    user_pronoun=voice_user_pronoun,
+                )
+                if isinstance(flush_result, dict):
+                    if flush_result.get("status") == "empty":
+                        print("[WARN] Auto-flush trả empty — buffer có thể đã bị xóa")
+                    else:
+                        result = flush_result
+                else:
+                    result = flush_result
+        api_timer.mark("pipeline")
+        api_timer.log(
+            {
+                "endpoint": "/api/voice_chat",
+                "client": self.client_address[0],
+                "stt_source": "pho_whisper",
+                "audio_bytes": length,
+            }
+        )
         if isinstance(result, dict):
             payload = dict(result)
             _attach_input_audio_links(payload, audio_path, self.config.output_root_path)
+            _attach_response_audio_links(payload, self.config.output_root_path)
             self._send_json(payload)
         else:
-            self._send_json(_payload_from_result(result, self.config.output_root_path))
+            payload = _payload_from_result(result, self.config.output_root_path)
+            _attach_input_audio_links(payload, audio_path, self.config.output_root_path)
+            self._send_json(payload)
 
     def _handle_owner_voice_sample(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
@@ -460,7 +544,10 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             self.send_header(SESSION_ID_HEADER, active_session_id)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except BrokenPipeError:
+            print("[web] Client đã ngắt kết nối trước khi nhận response.")
 
 
 def _new_session_id() -> str:
@@ -502,6 +589,15 @@ def _payload_from_result(result, output_root: str | Path) -> dict:
     if result.input_audio_path:
         _attach_input_audio_links(payload, result.input_audio_path, output_root)
     return payload
+
+
+def _attach_response_audio_links(payload: dict, output_root: str | Path) -> None:
+    audio_path = payload.get("audio_path")
+    if not audio_path:
+        return
+    payload["audio_url"] = _output_file_url(audio_path, output_root)
+    payload.setdefault("audio_text_url", _sidecar_url(audio_path, ".txt", output_root))
+    payload.setdefault("audio_metadata_url", _sidecar_url(audio_path, ".json", output_root))
 
 
 def _attach_input_audio_links(payload: dict, audio_path: str | Path | None, output_root: str | Path) -> None:
@@ -601,6 +697,10 @@ def run_server(config: LumiConfig, host: str, port: int) -> None:
     Handler.config = config
     Handler.output_dir = output_root_dir
 
+    from lumi.user_memory.integration import install_user_memory
+
+    install_user_memory(Handler, config)
+
     server = ThreadingHTTPServer((host, port), Handler)
     url_host = "127.0.0.1" if host in {"0.0.0.0", ""} else host
     print(f"Lumi web đang chạy: http://{url_host}:{port}")
@@ -637,7 +737,6 @@ def main() -> None:
         debug=base.debug,
         asr_model=base.asr_model,
         llm_model=base.llm_model,
-        speaker_model=base.speaker_model,
         emotion_model=base.emotion_model,
         asr_provider=args.asr_provider or base.asr_provider,
         response_provider=args.response_provider or base.response_provider,
@@ -909,9 +1008,13 @@ INDEX_HTML = r"""<!doctype html>
     let voiceFlushInFlight = false;
     let voiceFlushQueued = false;
 
-    const VOICE_MAX_BUFFER_MS = 2200;
+    const VOICE_ATOMIC_FLUSH_MS = 350;
+    const VOICE_MERGE_FLUSH_MS = 2000;
+    const VOICE_MAX_BUFFER_MS = 12000;
     const VOICE_MIN_FLUSH_MS = 100;
-    const VOICE_COMPLETE_FLUSH_MS = 250;
+    const VOICE_STREAM_WATCHDOG_MS = 3000;
+    let voiceStreamWatchdog = null;
+    let lastBufferedServerText = '';
 
     let isVoiceActive = false;
     let voiceIsSpeaking = false;
@@ -998,100 +1101,150 @@ INDEX_HTML = r"""<!doctype html>
       }
     }
 
-    function resetVoiceFlushTimer(waitMs = 1700) {
+    function clearVoiceStreamWatchdog() {
+      if (voiceStreamWatchdog) {
+        clearTimeout(voiceStreamWatchdog);
+        voiceStreamWatchdog = null;
+      }
+    }
+
+    function armVoiceStreamWatchdog() {
+      clearVoiceStreamWatchdog();
+      voiceStreamWatchdog = setTimeout(() => {
+        voiceStreamWatchdog = null;
+        if (!voiceIsBuffered || voiceFlushInFlight) return;
+        console.warn('[Lumi] WATCHDOG ép voice_stream — buffer:', lastBufferedServerText);
+        void runVoiceStreamFlush();
+      }, VOICE_STREAM_WATCHDOG_MS);
+    }
+
+    async function runVoiceStreamFlush() {
+      if (voiceFlushTimer) {
+        clearTimeout(voiceFlushTimer);
+        voiceFlushTimer = null;
+      }
+      if (voiceFlushInFlight) {
+        voiceFlushQueued = true;
+        return;
+      }
+      if (!voiceIsBuffered && !lastBufferedServerText) {
+        clearVoiceStreamWatchdog();
+        return;
+      }
+
+      voiceFlushInFlight = true;
+      clearVoiceStreamWatchdog();
+      console.info('[Lumi] POST /api/voice_stream — buffer:', lastBufferedServerText);
+
+      try {
+        setStatus('Đang phản hồi voice (Streaming)...');
+        const botP = botPronounInput.value.trim() || 'Lumi';
+        const speakerName = selectedSpeakerName();
+        const userP = speakerName || userPronounInput.value.trim() || 'bạn';
+
+        if (currentAudioQueue) currentAudioQueue.stop();
+        currentAudioQueue = new AudioQueue();
+
+        const response = await fetch('/api/voice_stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, bot_pronoun: botP, user_pronoun: userP })
+        });
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(errBody.error || ('voice_stream HTTP ' + response.status));
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+        let gotContent = false;
+
+        const el = document.createElement('div');
+        el.className = 'message';
+        const labelEl = document.createElement('span');
+        labelEl.className = 'label';
+        labelEl.textContent = 'Lumi';
+        el.appendChild(labelEl);
+        const textNode = document.createTextNode('');
+        el.appendChild(textNode);
+        conversation.prepend(el);
+
+        let fullText = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n\n');
+          sseBuffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const dataStr = line.substring(6);
+            try {
+              const chunk = JSON.parse(dataStr);
+              if (chunk.status === 'empty') {
+                console.warn('[Lumi] voice_stream trả về empty — buffer server có thể đã mất');
+                continue;
+              }
+              if (chunk.text_chunk) {
+                gotContent = true;
+                fullText += chunk.text_chunk;
+                textNode.nodeValue = fullText;
+              }
+              if (chunk.audio_base64) {
+                currentAudioQueue.add(chunk.audio_base64);
+              }
+              if (chunk.status === 'interrupted') {
+                setStatus('Đã ngắt lời Lumi...');
+                return;
+              }
+            } catch (e) {
+              console.error('Parse chunk error', e);
+            }
+          }
+        }
+
+        if (gotContent) {
+          voiceIsBuffered = false;
+          lastBufferedServerText = '';
+          voiceBufferStartedAt = null;
+        }
+        setStatus(isVoiceActive ? 'Voice Chat đang bật (Micro luôn mở)' : 'Sẵn sàng');
+      } catch (err) {
+        console.error('[Lumi] voice_stream lỗi:', err);
+        setStatus(err.message);
+      } finally {
+        voiceFlushInFlight = false;
+        if (voiceFlushQueued || voiceIsBuffered) {
+          voiceFlushQueued = false;
+          queueVoiceStreamFlush(VOICE_MIN_FLUSH_MS);
+        }
+      }
+    }
+
+    function queueVoiceStreamFlush(waitMs) {
       if (voiceFlushTimer) clearTimeout(voiceFlushTimer);
-      if (!voiceIsBuffered) {
+      if (!voiceIsBuffered && !lastBufferedServerText) {
         voiceBufferStartedAt = null;
+        clearVoiceStreamWatchdog();
         return;
       }
       if (voiceBufferStartedAt === null) voiceBufferStartedAt = Date.now();
       const elapsedMs = Date.now() - voiceBufferStartedAt;
       const forcedRemainingMs = Math.max(VOICE_MIN_FLUSH_MS, VOICE_MAX_BUFFER_MS - elapsedMs);
       const effectiveWaitMs = Math.min(waitMs, forcedRemainingMs);
-      voiceFlushTimer = setTimeout(async () => {
+      console.info('[Lumi] hẹn voice_stream sau', effectiveWaitMs, 'ms |', lastBufferedServerText);
+      armVoiceStreamWatchdog();
+      voiceFlushTimer = setTimeout(() => {
         voiceFlushTimer = null;
-        if (voiceFlushInFlight) {
-          voiceFlushQueued = true;
-          return;
-        }
-
-        voiceIsBuffered = false;
-        voiceBufferStartedAt = null;
-        voiceFlushInFlight = true;
-        try {
-          setStatus('Đang phản hồi voice (Streaming)...');
-          const botP = botPronounInput.value.trim() || 'Lumi';
-          const speakerName = selectedSpeakerName();
-          const userP = speakerName || userPronounInput.value.trim() || 'bạn';
-          
-          if (currentAudioQueue) {
-             currentAudioQueue.stop();
-          }
-          currentAudioQueue = new AudioQueue();
-          
-          const response = await fetch('/api/voice_stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId, bot_pronoun: botP, user_pronoun: userP })
-          });
-          
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
-          
-          // Tạo sẵn một message rỗng để điền dần chữ vào
-          const el = document.createElement('div');
-          el.className = 'message';
-          const labelEl = document.createElement('span');
-          labelEl.className = 'label';
-          labelEl.textContent = 'Lumi';
-          el.appendChild(labelEl);
-          const textNode = document.createTextNode('');
-          el.appendChild(textNode);
-          conversation.prepend(el);
-          
-          let fullText = "";
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            
-            const lines = buffer.split('\n\n');
-            buffer = lines.pop(); // Giữ lại phần chưa hoàn chỉnh
-            
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const dataStr = line.substring(6);
-                try {
-                  const chunk = JSON.parse(dataStr);
-                  if (chunk.text_chunk) {
-                    fullText += chunk.text_chunk;
-                    textNode.nodeValue = fullText;
-                  }
-                  if (chunk.audio_base64) {
-                    currentAudioQueue.add(chunk.audio_base64);
-                  }
-                  if (chunk.status === 'interrupted') {
-                    setStatus('Đã ngắt lời Lumi...');
-                    return;
-                  }
-                } catch(e) { console.error("Parse chunk error", e); }
-              }
-            }
-          }
-          setStatus(isVoiceActive ? 'Voice Chat đang bật (Micro luôn mở)' : 'Sẵn sàng');
-        } catch (err) {
-          setStatus(err.message);
-        } finally {
-          voiceFlushInFlight = false;
-          if (voiceFlushQueued || voiceIsBuffered) {
-            voiceFlushQueued = false;
-            if (voiceIsBuffered) resetVoiceFlushTimer(VOICE_MIN_FLUSH_MS);
-          }
-        }
+        void runVoiceStreamFlush();
       }, effectiveWaitMs);
     }
+
+    const scheduleVoiceFlushToLlm = queueVoiceStreamFlush;
+    const resetVoiceFlushTimer = queueVoiceStreamFlush;
 
     function setStatus(text) {
       statusEl.textContent = text;
@@ -1326,7 +1479,8 @@ INDEX_HTML = r"""<!doctype html>
       voiceHadBufferedBeforeCurrentUtterance = false;
       voiceIsProcessing = true;
       resetVoiceCapture();
-      if (voiceFlushInFlight || (currentAudioQueue && currentAudioQueue.isPlaying)) {
+      const assistantPlaying = isAssistantAudioPlaying();
+      if (voiceFlushInFlight || assistantPlaying) {
         if (currentAudioQueue) currentAudioQueue.stop();
         fetch('/api/interrupt', {
           method: 'POST',
@@ -1334,11 +1488,6 @@ INDEX_HTML = r"""<!doctype html>
           body: JSON.stringify({ session_id: sessionId })
         }).catch(() => {});
       }
-      if (voiceFlushTimer) {
-        clearTimeout(voiceFlushTimer);
-        voiceFlushTimer = null;
-      }
-      voiceIsBuffered = false;
       try {
         setStatus('Đang phân tích giọng nói...');
         const botP = botPronounInput.value.trim() || 'Lumi';
@@ -1364,26 +1513,34 @@ INDEX_HTML = r"""<!doctype html>
         
         addVoiceInputMessage(data);
 
-        if (data.status === 'buffered') {
-          setStatus('Lumi đang chờ bạn nói thêm...');
+        if (data.response_text) {
+          voiceIsBuffered = false;
+          lastBufferedServerText = '';
+          voiceBufferStartedAt = null;
+          if (voiceFlushTimer) {
+            clearTimeout(voiceFlushTimer);
+            voiceFlushTimer = null;
+          }
+          clearVoiceStreamWatchdog();
+          voiceFlushInFlight = false;
+          voiceFlushQueued = false;
+          if (currentAudioQueue && currentAudioQueue.isPlaying) currentAudioQueue.stop();
+          addMessage('Lumi', data.response_text, data.audio_url, responseDetails(data));
+          setStatus('Voice Chat đang bật (Micro luôn mở)');
+        } else if (data.status === 'buffered') {
+          lastBufferedServerText = data.buffered_text || data.input_text || '';
           voiceIsBuffered = true;
-          const waitMs = data.is_complete ? Math.min(data.wait_ms || VOICE_COMPLETE_FLUSH_MS, VOICE_COMPLETE_FLUSH_MS) : (data.wait_ms || 1700);
-          resetVoiceFlushTimer(waitMs);
+          setStatus('Đang chờ Lumi trả lời...');
+          await runVoiceStreamFlush();
         } else if (data.status === 'ignored') {
           if (hadBufferedBeforeRequest) {
             voiceIsBuffered = true;
             setStatus('Lumi sẽ trả lời phần bạn vừa nói trước đó...');
-            resetVoiceFlushTimer(VOICE_MIN_FLUSH_MS);
+            queueVoiceStreamFlush(VOICE_MIN_FLUSH_MS);
           } else {
             voiceBufferStartedAt = null;
             setStatus(data.reason ? `Bỏ qua: ${data.reason}` : 'Sẵn sàng (bỏ qua do lẩm bẩm hoặc ồn)');
           }
-        } else if (data.response_text) {
-          voiceBufferStartedAt = null;
-          if (currentAudioQueue && currentAudioQueue.isPlaying) currentAudioQueue.stop();
-          addMessage('Lumi', data.response_text, data.audio_url, responseDetails(data));
-          if (data.audio_url) currentAudioQueue.add(data.audio_url);
-          setStatus('Voice Chat đang bật (Micro luôn mở)');
         }
       } catch (error) {
         setStatus(error.message);
@@ -1441,24 +1598,20 @@ INDEX_HTML = r"""<!doctype html>
             if (!voiceIsSpeaking) {
               voiceIsSpeaking = true;
               setStatus('Đang nghe bạn nói...');
-              // Bất cứ khi nào người dùng bắt đầu nói, gửi tín hiệu ngắt lời
-              // để dọn dẹp các luồng sinh chữ/âm thanh đang chạy dang dở trên server
-              console.log("Người dùng bắt đầu nói, gửi tín hiệu interrupt.");
-              fetch('/api/interrupt', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionId })
-              }).catch(e => {});
-              
-              if (currentAudioQueue && currentAudioQueue.isPlaying) {
-                 currentAudioQueue.stop();
-              }
-              
-              if (voiceFlushTimer) {
-                voiceHadBufferedBeforeCurrentUtterance = voiceIsBuffered;
-                clearTimeout(voiceFlushTimer);
-                voiceFlushTimer = null;
-                voiceIsBuffered = false;
+              const assistantPlaying = isAssistantAudioPlaying();
+              if (voiceFlushInFlight || assistantPlaying) {
+                console.log('[Lumi] barge-in — interrupt stream/TTS đang chạy');
+                fetch('/api/interrupt', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ session_id: sessionId })
+                }).catch(e => {});
+                if (currentAudioQueue && currentAudioQueue.isPlaying) {
+                  currentAudioQueue.stop();
+                }
+              } else if (voiceIsBuffered) {
+                voiceHadBufferedBeforeCurrentUtterance = true;
+                queueVoiceStreamFlush(VOICE_MERGE_FLUSH_MS);
               }
             }
             if (voiceSilenceTimer) {
@@ -1587,8 +1740,10 @@ INDEX_HTML = r"""<!doctype html>
       conversation.innerHTML = '';
       if (textFlushTimer) clearTimeout(textFlushTimer);
       if (voiceFlushTimer) clearTimeout(voiceFlushTimer);
+      clearVoiceStreamWatchdog();
       textIsBuffered = false;
       voiceIsBuffered = false;
+      lastBufferedServerText = '';
       textIsProcessing = false;
       try {
         await postJson('/api/clear', {});
@@ -1626,12 +1781,15 @@ INDEX_HTML = r"""<!doctype html>
       resetVoiceCapture();
       voiceIsProcessing = false;
       voiceIsBuffered = false;
+      lastBufferedServerText = '';
       voiceBufferStartedAt = null;
       voiceHadBufferedBeforeCurrentUtterance = false;
       if (voiceFlushTimer) {
         clearTimeout(voiceFlushTimer);
         voiceFlushTimer = null;
       }
+      clearVoiceStreamWatchdog();
+      voiceFlushInFlight = false;
       if (processor) processor.disconnect();
       if (source) source.disconnect();
       if (zeroGain) zeroGain.disconnect();

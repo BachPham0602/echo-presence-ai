@@ -8,6 +8,7 @@ __pycache__/
 build/
 dist/
 outputs/
+users/
 models/
 
 # Env & secrets

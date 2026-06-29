@@ -7,6 +7,8 @@ torchaudio
 soundfile
 sounddevice
 vieneu
+edge-tts
+speechbrain
 
 [asr]
 transformers
@@ -33,6 +35,7 @@ torchaudio
 
 [tts]
 vieneu
+edge-tts
 
 [vad]
 silero-vad

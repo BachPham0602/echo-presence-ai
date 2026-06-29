@@ -12,7 +12,9 @@ import { StatusIndicator } from "@/components/StatusIndicator";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { useLumiPipeline } from "@/hooks/useLumiPipeline";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-import { useConversations } from "@/store/conversations";
+import { useConversationsWithMemory } from "@/hooks/useConversationsWithMemory";
+import { useLumiSessionLifecycle } from "@/components/LumiUserGate";
+import { getCurrentApiSessionId } from "@/store/lumiSessionRegistry";
 import {
   expressionFromLumi,
   getExpression,
@@ -62,10 +64,18 @@ const VARIANT_STYLES: Record<
 };
 
 export function LumiExperience({ variant }: LumiExperienceProps) {
-  const conversations = useConversations();
+  const conversations = useConversationsWithMemory();
   const pipeline = useLumiPipeline({
     onMessage: (m) => conversations.appendMessage(m),
+    preferServerAsr: false,
   });
+  useLumiSessionLifecycle(getCurrentApiSessionId, pipeline.hasPendingVoiceFlushRef);
+
+  useEffect(() => {
+    if (conversations.activeId) {
+      pipeline.setApiSessionId(conversations.activeId);
+    }
+  }, [conversations.activeId, pipeline.setApiSessionId]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
   const [override, setOverride] = useState<ExpressionName | null>(null);
@@ -85,8 +95,13 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
   }, []);
   const activeExpression: ExpressionName = override ?? managed;
 
+  const pauseMicCapture =
+    pipeline.snapshot.state === "speaking" ||
+    pipeline.snapshot.state === "transcribing";
+
   const handleFinal = useCallback(
     (text: string, audio?: Blob) => {
+      console.info("[Lumi STT] onFinal → sendVoice:", text, audio ? `${audio.size}B` : "no-audio");
       void pipeline.sendVoice(text, audio);
     },
     [pipeline],
@@ -98,16 +113,31 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
     [pipeline],
   );
 
+  const handleServerTranscribe = useCallback(
+    (audio: Blob) => {
+      console.info("[Lumi STT] server-only path, bytes:", audio.size);
+      void pipeline.sendVoiceFromAudio(audio);
+    },
+    [pipeline],
+  );
+
   const stt = useSpeechRecognition({
     lang: "vi-VN",
     onFinal: handleFinal,
     onInterim: handleInterim,
+    onServerTranscribe: handleServerTranscribe,
+    enableServerFallback: true,
+    pauseMicCapture,
+    blockServerFallbackRef: pipeline.blockServerFallbackRef,
   });
 
   const handleToggleMic = useCallback(async () => {
     if (stt.isListening) stt.stop();
-    else await stt.start();
-  }, [stt]);
+    else {
+      pipeline.unlockAudioOnMicStart();
+      await stt.start();
+    }
+  }, [pipeline, stt]);
 
   const statusLabel = recognitionStatusLabel(stt.status);
   const style = VARIANT_STYLES[variant];
@@ -236,12 +266,12 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
         activeId={conversations.activeId}
         onClose={() => setSidebarOpen(false)}
         onNew={() => {
-          conversations.startNewConversation();
-          pipeline.resetMessages();
+          const id = conversations.startNewConversation();
+          pipeline.resetMessages(id);
         }}
         onSelect={(id) => {
           const msgs = conversations.selectConversation(id);
-          pipeline.loadMessages(msgs);
+          pipeline.loadMessages(msgs, id);
         }}
         onDelete={(id) => {
           conversations.deleteConversation(id);
@@ -289,6 +319,22 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
           interimTranscript={pipeline.interimTranscript}
         />
       ) : (
+        <>
+          {variant === "playful" && !stt.isListening && (
+            <div className="pointer-events-none absolute inset-x-0 z-[25] flex justify-center px-4"
+              style={{ bottom: "calc(var(--lumi-input-bottom) + 5rem)" }}
+            >
+              <button
+                type="button"
+                className="pointer-events-auto glass-pill max-w-sm px-5 py-3 text-center text-sm font-medium text-foreground shadow-lg transition hover:scale-[1.02]"
+                onClick={() => void handleToggleMic()}
+              >
+                {stt.supported
+                  ? "Nhấn để bật micro — Lumi cần quyền nghe bạn nói"
+                  : "Trình duyệt không hỗ trợ nhận diện giọng nói"}
+              </button>
+            </div>
+          )}
         <div
           className="pointer-events-none absolute inset-x-0 z-20 flex justify-center"
           style={{ bottom: "var(--lumi-input-bottom)" }}
@@ -297,10 +343,12 @@ export function LumiExperience({ variant }: LumiExperienceProps) {
             <MicButton
               active={stt.isListening}
               muted={!stt.isListening}
+              disabled={stt.status === "checking_permissions" || stt.status === "starting"}
               onClick={() => void handleToggleMic()}
             />
           </div>
         </div>
+        </>
       )}
     </main>
   );

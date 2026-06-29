@@ -6,6 +6,7 @@ from time import time_ns
 
 from lumi.config import LumiConfig
 from lumi.errors import MissingDependencyError
+from lumi.latency_log import ModelTimer
 
 
 class PhoWhisperASR:
@@ -17,22 +18,23 @@ class PhoWhisperASR:
 
     def transcribe_file(self, audio_path: str | Path) -> str:
         pipe = self._load_pipeline()
-        try:
-            result = pipe(
-                str(audio_path),
-                generate_kwargs={
-                    "language": "vi",
-                    "task": "transcribe",
-                    "temperature": 0.0,
-                    "no_speech_threshold": 0.6,
-                    "logprob_threshold": -1.0,
-                    "condition_on_prev_tokens": False,
-                }
-            )
-        finally:
-            # Giải phóng VRAM dù có lỗi hay không
-            import torch
-            torch.cuda.empty_cache()
+        with ModelTimer(f"asr/{self.config.asr_model}", method="transcribe_file", detail=Path(audio_path).name):
+            try:
+                result = pipe(
+                    str(audio_path),
+                    generate_kwargs={
+                        "language": "vi",
+                        "task": "transcribe",
+                        "temperature": 0.0,
+                        "no_speech_threshold": 0.6,
+                        "logprob_threshold": -1.0,
+                        "condition_on_prev_tokens": False,
+                    }
+                )
+            finally:
+                # Giải phóng VRAM dù có lỗi hay không
+                import torch
+                torch.cuda.empty_cache()
 
         if isinstance(result, dict):
             return str(result.get("text", "")).strip()
@@ -158,7 +160,7 @@ def _audio_device_error(device: int | str | None) -> str:
     return (
         f"PortAudio không mở được {selected}. "
         "Thường là máy/container không có microphone mặc định, hoặc bạn cần chọn device cụ thể. "
-        "Chạy: PYTHONPATH=src python -m lumi.mvp_cli --list-audio-devices. "
+        "Chạy: python -c \"from lumi.providers.asr import MicrophoneRecorder; print(MicrophoneRecorder.list_input_devices())\". "
         "Sau đó chạy lại với: --device <index>. "
         "Nếu danh sách rỗng, môi trường hiện không expose microphone cho Python."
     )

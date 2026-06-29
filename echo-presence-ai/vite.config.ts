@@ -31,6 +31,8 @@ export default defineConfig({
   },
   vite: {
     server: {
+      port: 5173,
+      strictPort: false,
       allowedHosts: [".ngrok-free.app"],
       proxy: {
         "/api": {

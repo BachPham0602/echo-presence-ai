@@ -18,6 +18,8 @@ import { mockSpeakerVerifier } from "./speakerVerification";
 import { mockEmotionRecognizer } from "./emotionRecognition";
 import { mockEmpatheticLLM } from "./empatheticResponse";
 import { mockVietnameseTTS } from "./vietnameseTTS";
+import { withLumiUserId } from "./userMemory";
+import { loadLumiUser, getLumiUserId } from "@/store/lumiUser";
 
 export interface PipelineDependencies {
   addressee: typeof mockAddresseeDetector;
@@ -57,23 +59,38 @@ export interface PipelineRunOutput {
 }
 
 export interface VoiceBufferResult {
-  status: "buffered" | "ignored" | "empty" | string;
+  status: "buffered" | "ignored" | "stopped" | "empty" | string;
   input_text?: string;
   buffered_text?: string;
+  response_text?: string;
+  audio_url?: string;
   reason?: string;
   wait_ms?: number;
   is_complete?: boolean;
 }
 
 export interface VoiceStreamChunk {
-  status?: "done" | "empty" | "interrupted" | string;
+  status?: "done" | "empty" | "interrupted" | "stopped" | string;
   text_chunk?: string;
   audio_base64?: string;
+  audio_mime?: string;
 }
 
 export type VoiceStreamChunkHandler = (chunk: VoiceStreamChunk) => void | Promise<void>;
 
+import { logApiTiming } from "@/lib/lumiDebug";
+
 const LUMI_API_BASE = import.meta.env.VITE_LUMI_API_BASE ?? "";
+
+function voiceIdentity() {
+  const user = loadLumiUser();
+  const name = user?.displayName?.trim() || "bạn";
+  return {
+    bot_pronoun: "Lumi",
+    user_pronoun: name,
+    owner_name: name,
+  };
+}
 
 function absoluteAudioUrl(url?: string): string | undefined {
   if (!url) return undefined;
@@ -112,20 +129,33 @@ async function readApiError(res: Response): Promise<string> {
 }
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const userId = getLumiUserId();
+  if (userId) headers["X-User-Id"] = userId;
+
+  const t0 = performance.now();
   const res = await fetch(`${LUMI_API_BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers,
+    body: JSON.stringify(withLumiUserId(body)),
   });
+  const ttfb = performance.now() - t0;
 
   if (!res.ok) {
     const detail = await readApiError(res);
+    logApiTiming(path, { fetch_ms: Math.round(performance.now() - t0), ttfb_ms: Math.round(ttfb) });
     throw new Error(
       detail ? "Lumi API error: " + res.status + " - " + detail : "Lumi API error: " + res.status,
     );
   }
 
-  return res.json() as Promise<T>;
+  const data = (await res.json()) as T;
+  logApiTiming(path, {
+    fetch_ms: Math.round(performance.now() - t0),
+    ttfb_ms: Math.round(ttfb),
+    body_ms: Math.round(performance.now() - t0 - ttfb),
+  });
+  return data;
 }
 
 export type PipelineProgress = (state: PipelineState) => void;
@@ -169,15 +199,22 @@ export async function runLumiTurn(
   return outputFromApi(data, transcript);
 }
 
+export function voiceResultFromApi(
+  data: VoiceBufferResult,
+  fallbackTranscript = "",
+): PipelineRunOutput | null {
+  if (!data.response_text?.trim()) return null;
+  return outputFromApi(data, data.input_text || fallbackTranscript);
+}
+
 export async function submitVoiceTranscript(
   text: string,
   sessionId?: string,
 ): Promise<VoiceBufferResult> {
+  const who = voiceIdentity();
   return postJson<VoiceBufferResult>("/api/voice_text", {
     text,
-    bot_pronoun: "Lumi",
-    user_pronoun: "bạn",
-    owner_name: "bạn",
+    ...who,
     session_id: sessionId,
   });
 }
@@ -186,15 +223,20 @@ export async function submitVoiceAudioFallback(
   audio: Blob,
   sessionId?: string,
 ): Promise<VoiceBufferResult> {
+  const who = voiceIdentity();
+  const headers: Record<string, string> = {
+    "Content-Type": "audio/wav",
+    "X-Bot-Pronoun": encodeURIComponent(who.bot_pronoun),
+    "X-User-Pronoun": encodeURIComponent(who.user_pronoun),
+    "X-Owner-Name": encodeURIComponent(who.owner_name),
+    "X-Session-Id": encodeURIComponent(sessionId ?? ""),
+  };
+  const userId = getLumiUserId();
+  if (userId) headers["X-User-Id"] = userId;
+
   const res = await fetch(`${LUMI_API_BASE}/api/voice_chat`, {
     method: "POST",
-    headers: {
-      "Content-Type": "audio/wav",
-      "X-Bot-Pronoun": encodeURIComponent("Lumi"),
-      "X-User-Pronoun": encodeURIComponent("bạn"),
-      "X-Owner-Name": encodeURIComponent("bạn"),
-      "X-Session-Id": encodeURIComponent(sessionId ?? ""),
-    },
+    headers,
     body: audio,
   });
 
@@ -224,23 +266,50 @@ export async function flushVoiceTurnStream(
   sessionId: string | undefined,
   onChunk: VoiceStreamChunkHandler,
 ): Promise<PipelineRunOutput | null> {
-  const res = await fetch(`${LUMI_API_BASE}/api/voice_stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      bot_pronoun: "Lumi",
-      user_pronoun: "bạn",
-      session_id: sessionId,
-    }),
-  });
+  const t0 = performance.now();
+  let ttfbMs: number | undefined;
+  let firstChunkMs: number | undefined;
+  let chunkCount = 0;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120_000);
+
+  let res: Response;
+  try {
+    res = await fetch(`${LUMI_API_BASE}/api/voice_stream`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: (() => {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        const userId = getLumiUserId();
+        if (userId) headers["X-User-Id"] = userId;
+        return headers;
+      })(),
+      body: JSON.stringify(
+        withLumiUserId({
+          ...voiceIdentity(),
+          session_id: sessionId,
+          is_timeout: false,
+        }),
+      ),
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("Lumi API timeout: voice_stream quá 120s — kiểm tra backend còn chạy không.");
+    }
+    throw err;
+  }
 
   if (!res.ok) {
     const detail = await readApiError(res);
+    logApiTiming("/api/voice_stream", { fetch_ms: Math.round(performance.now() - t0) });
     throw new Error(
       detail ? "Lumi API error: " + res.status + " - " + detail : "Lumi API error: " + res.status,
     );
   }
   if (!res.body) throw new Error("Lumi API error: streaming body is empty");
+  ttfbMs = performance.now() - t0;
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -260,6 +329,8 @@ export async function flushVoiceTurnStream(
     const chunk = JSON.parse(data) as VoiceStreamChunk;
     if (chunk.text_chunk) fullResponse += chunk.text_chunk;
     if (chunk.status) terminalStatus = chunk.status;
+    chunkCount += 1;
+    if (firstChunkMs === undefined) firstChunkMs = performance.now() - t0;
     await onChunk(chunk);
   }
 
@@ -275,6 +346,17 @@ export async function flushVoiceTurnStream(
   }
 
   if (buffer.trim()) await handleFrame(buffer);
+  clearTimeout(timeoutId);
+  logApiTiming("/api/voice_stream", {
+    fetch_ms: Math.round(performance.now() - t0),
+    ttfb_ms: Math.round(ttfbMs ?? 0),
+    body_ms: Math.round(performance.now() - t0 - (ttfbMs ?? 0)),
+  });
+  console.info("[Lumi STREAM]", {
+    chunks: chunkCount,
+    first_chunk_ms: firstChunkMs ? Math.round(firstChunkMs) : null,
+    terminal_status: terminalStatus || null,
+  });
   if (terminalStatus === "empty" || !fullResponse.trim()) return null;
   return outputFromApi({ response_text: fullResponse.trim() });
 }

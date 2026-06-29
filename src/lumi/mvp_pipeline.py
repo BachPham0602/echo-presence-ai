@@ -6,6 +6,7 @@ import re
 
 from lumi.config import LumiConfig
 from lumi.models import MvpPipelineResult
+from lumi.latency_log import LatencyTimer
 from lumi.providers.asr import PhoWhisperASR
 import time
 from datetime import datetime
@@ -31,6 +32,9 @@ VOICE_ASR_HALLUCINATIONS = (
     "nói thật ghi nhớ",
     "nhiều trường hợp sau khi thi đấu",
     "những vấn đề chung",
+    "thay thế chất lượng",
+    "tăng trưởng rất nhanh",
+    "đây là một trong những",
 )
 
 VOICE_FILLER_TOKENS = {
@@ -67,7 +71,7 @@ FOOD_TERMS = ("an", "mon", "doi", "goi y", "chot", "tuy", "gi cung duoc")
 MEDICATION_TERMS = ("panadol", "paracetamol", "acetaminophen", "thuoc giam dau", "uong thuoc", "uong mot vien", "mot vien roi", "vien roi")
 GAMBLING_TERMS = ("ca do", "danh de", "lo de", "so de", "co bac", "casino", "keo bong", "slot")
 UNSAFE_INGESTION_TERMS = ("an cut", "an cuc", "an phan", "uong nuoc tieu")
-CRISIS_TERMS = ("tu tu", "muon chet", "khong muon song", "lam hai ban than", "chet di", "ket thuc moi thu")
+CRISIS_TERMS = ("muon tu tu", "tu sat", "muon chet", "khong muon song", "lam hai ban than", "chet di", "ket thuc moi thu")
 DISTRESS_TERMS = ("tram cam", "tuyet vong", "khong on", "muon bien mat")
 SADNESS_TERMS = ("buon", "co don", "muon khoc", "chan nan")
 GREETING_TERMS = ("xin chao", "hello", "hi", "chao lumi", "lumi oi")
@@ -80,6 +84,8 @@ STOP_RESPONSE_TERMS = (
     (("thoi noi", "thoi noi nua", "thoi dung noi", "noi it thoi"), "Lumi dừng nói"),
     (("dung lai", "dung di", "dung thoi", "thoi dung", "stop", "cancel", "huy"), "Lumi dừng lại"),
 )
+# Một từ — chỉ khớp khi cả câu đúng một từ đó (tránh nhầm tên riêng "Huy").
+STOP_SINGLE_WORD_TERMS = frozenset({"stop", "cancel", "huy"})
 CONTEXT_FOLLOWUP_TERMS = (
     "roi",
     "vay",
@@ -99,8 +105,8 @@ CJK_TEXT_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af
 class LumiMvpPipeline:
     """MVP model-first: text/audio input -> LLM text response -> TTS audio.
 
-    Các hook turn_detector, addressee_detector, speaker_verifier, emotion_classifier
-    được giữ trong constructor để sau này tích hợp, nhưng hiện tại không chạy.
+    Các hook turn_detector, addressee_detector, emotion_classifier
+    được giữ trong constructor để sau này tích hợp, nhưng hiện tại không chạy hết.
     """
 
     def __init__(
@@ -111,7 +117,6 @@ class LumiMvpPipeline:
         tts=None,
         turn_detector=None,
         addressee_detector=None,
-        speaker_verifier=None,
         emotion_classifier=None,
     ):
         self.config = config or LumiConfig.from_env()
@@ -131,11 +136,6 @@ class LumiMvpPipeline:
         self.turn_detector = turn_detector or HeuristicTurnTakingDetector()
         self.addressee_detector = addressee_detector or LlmAddresseeDetector(self.response_generator)
         self.voice_addressee_detector = HeuristicAddresseeDetector()
-        from lumi.providers.speaker import RealSpeakerVerifier
-        self.speaker_verifier = speaker_verifier or RealSpeakerVerifier(
-            owner_voice_dir=self.config.owner_voice_path,
-            speaker_model=self.config.speaker_model,
-        )
         self.emotion_classifier = emotion_classifier
 
     def handle_text(self, text: str, bot_pronoun: str | None = None, user_pronoun: str | None = None) -> MvpPipelineResult:
@@ -231,6 +231,7 @@ class LumiMvpPipeline:
 
     def flush_voice_chat(self, bot_pronoun: str | None = None, user_pronoun: str | None = None, is_timeout: bool = False) -> MvpPipelineResult | dict:
         if not self.voice_buffer:
+            print("[WARN] flush_voice_chat: voice_buffer RỖNG")
             return {"status": "empty"}
 
         combined_text = " ".join(self.voice_buffer)
@@ -269,10 +270,12 @@ class LumiMvpPipeline:
 
     def flush_voice_chat_stream(self, bot_pronoun: str | None = None, user_pronoun: str | None = None, is_timeout: bool = False):
         if not self.voice_buffer:
+            print("[WARN] voice_stream: voice_buffer RỖNG — client gọi flush nhưng không có text")
             yield {"status": "empty"}
             return
 
         combined_text = " ".join(self.voice_buffer)
+        timer = LatencyTimer("voice_stream")
         
         if is_timeout:
             prompt_text = combined_text + "\n(Lưu ý từ hệ thống: Người dùng có thể đang nói dở câu hoặc ASR bắt nhầm nhiễu. Nếu câu vô nghĩa hoặc chưa rõ ý, hãy hỏi lại ngắn gọn. Nếu đã rõ ý, hãy trả lời bình thường.)"
@@ -294,6 +297,7 @@ class LumiMvpPipeline:
                 yield {"status": "interrupted"}
                 return
             print("[DEBUG] Vẫn đang đợi luồng LLM cũ dừng lại...")
+        timer.mark("generation_lock_wait")
             
         try:
             # Double check sau khi có lock
@@ -309,10 +313,14 @@ class LumiMvpPipeline:
             spoken_response = ""
             last_spoken_chunk = ""
             tts_lock = threading.Lock()
+            first_token_logged = False
+            first_tts_logged = False
+            tts_chunk_count = 0
+            tts_total_ms = 0.0
             
             # Helper to synthesize and yield
             def synthesize_and_yield(text_chunk):
-                nonlocal last_spoken_chunk
+                nonlocal last_spoken_chunk, first_tts_logged, tts_chunk_count, tts_total_ms
                 text_chunk = self._guard_response_chunk_for_tts(
                     combined_text, text_chunk, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun
                 )
@@ -324,21 +332,37 @@ class LumiMvpPipeline:
                     return None
                 last_spoken_chunk = text_chunk
                 try:
-                    try:
-                        import torch
-                    except Exception:
-                        torch = None
+                    tts_t0 = time.perf_counter()
                     with tts_lock:
-                        if torch is not None and getattr(torch, "cuda", None) is not None:
-                            torch.cuda.empty_cache()
                         tts_res = self.tts.synthesize_text(text_chunk)
+                    tts_ms = (time.perf_counter() - tts_t0) * 1000.0
+                    tts_chunk_count += 1
+                    tts_total_ms += tts_ms
+                    if not first_tts_logged:
+                        timer.mark("first_tts")
+                        first_tts_logged = True
+                        print(f"[LATENCY] voice_stream first_tts={tts_ms:.0f}ms chunk='{text_chunk[:40]}'")
                     if getattr(tts_res, 'audio_path', None) and Path(tts_res.audio_path).exists():
-                        with open(tts_res.audio_path, "rb") as f:
+                        audio_path = Path(tts_res.audio_path)
+                        with open(audio_path, "rb") as f:
                             b64_audio = base64.b64encode(f.read()).decode('utf-8')
-                        return {"text_chunk": text_chunk, "audio_base64": b64_audio}
+                        return {
+                            "text_chunk": text_chunk,
+                            "audio_base64": b64_audio,
+                            "audio_mime": _audio_mime_for_path(audio_path),
+                        }
                 except Exception as e:
                     print(f"[ERROR] TTS Failed for chunk: {e}")
                 return {"text_chunk": text_chunk}
+
+            stop_response = self._stop_response_for_intent(combined_text)
+            if stop_response:
+                self._apply_stop_intent()
+                self._remember(combined_text, stop_response)
+                timer.log({"input": combined_text[:80], "stopped": True})
+                yield {"status": "stopped", "text_chunk": stop_response}
+                yield {"status": "done"}
+                return
 
             direct_response = self._direct_response_for_current_turn(
                 combined_text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun
@@ -348,9 +372,18 @@ class LumiMvpPipeline:
                 if chunk_data:
                     yield chunk_data
                 self._remember(combined_text, direct_response)
+                timer.log(
+                    {
+                        "input": combined_text[:80],
+                        "direct_response": True,
+                        "tts_chunks": tts_chunk_count,
+                        "tts_total_ms": round(tts_total_ms, 1),
+                    }
+                )
                 yield {"status": "done"}
                 return
     
+            llm_t0 = time.perf_counter()
             for token in self.response_generator.generate_stream(
                 prompt_text, 
                 history=self._history_for_turn(combined_text),
@@ -360,6 +393,11 @@ class LumiMvpPipeline:
                 pause_lock=tts_lock,
                 max_new_tokens=self.config.llm_voice_max_new_tokens,
             ):
+                if not first_token_logged:
+                    timer.mark("llm_first_token")
+                    first_token_logged = True
+                    print(f"[LATENCY] voice_stream llm_first_token={(time.perf_counter() - llm_t0) * 1000:.0f}ms")
+
                 if self.interrupt_event.is_set():
                     print("[DEBUG] Bị ngắt lời khi đang sinh phản hồi!")
                     break
@@ -370,14 +408,15 @@ class LumiMvpPipeline:
                 if any(p in buffer for p in [".", "?", "!", "\n"]):
                     # Cắt ở dấu ngắt câu cuối cùng
                     last_punct_idx = max(buffer.rfind(p) for p in [".", "?", "!", "\n"])
-                    sentence = buffer[:last_punct_idx+1]
-                    buffer = buffer[last_punct_idx+1:]
+                    sentence = buffer[:last_punct_idx+1].strip()
+                    buffer = buffer[last_punct_idx+1:].lstrip()
                     
                     chunk_data = synthesize_and_yield(sentence)
                     if chunk_data:
                         spoken_response += chunk_data.get("text_chunk", "")
                         yield chunk_data
     
+            timer.mark("llm_generation")
             if buffer.strip() and not self.interrupt_event.is_set():
                 chunk_data = synthesize_and_yield(buffer)
                 if chunk_data:
@@ -389,6 +428,15 @@ class LumiMvpPipeline:
                 self._remember(combined_text, remembered_response)
                 print(f"[LLM OUT] Voice stream đầy đủ: '{remembered_response}'")
             
+            timer.log(
+                {
+                    "input": combined_text[:80],
+                    "tts_chunks": tts_chunk_count,
+                    "tts_total_ms": round(tts_total_ms, 1),
+                    "interrupted": self.interrupt_event.is_set(),
+                    "bottleneck_hint": _latency_bottleneck_hint(timer, tts_total_ms),
+                }
+            )
             if self.interrupt_event.is_set():
                 yield {"status": "interrupted"}
             else:
@@ -418,45 +466,11 @@ class LumiMvpPipeline:
         user_pronoun: str | None = None,
         owner_name: str | None = None,
     ) -> MvpPipelineResult | dict:
-        print("\n[DEBUG] Bắt đầu xử lý Voice Chat...")
-        speaker_info = None
-        
-        import concurrent.futures
-        
-        def run_sv():
-            # Tạm tắt Speaker Verifier theo yêu cầu để tăng tốc độ phản hồi
-            return None
-
-        def run_asr():
-            t0 = time.time()
-            transcript = self.asr.transcribe_file(audio_path)
-            t1 = time.time()
-            print(f"[DEBUG] Thời gian giải mã ASR: {t1 - t0:.2f}s")
-            return transcript
-
-        print("[DEBUG] Đang chạy song song Speaker Verifier và ASR...")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_sv = executor.submit(run_sv)
-            future_asr = executor.submit(run_asr)
-            
-            speaker_decision = future_sv.result()
-            transcript = future_asr.result()
-
-        if speaker_decision:
-            speaker_info = speaker_decision.reason
-            if not speaker_decision.verified:
-                reason = f"Không phải chủ nhân. {speaker_decision.reason}"
-                print(f"[DEBUG] Bỏ qua: Không phải chủ nhân.")
-                self._write_input_sidecars(
-                    audio_path,
-                    "",
-                    channel="voice",
-                    status="ignored",
-                    reason=reason,
-                    owner_name=owner_name,
-                    speaker_info=speaker_info,
-                )
-                return {"status": "ignored", "reason": reason}
+        print("\n[DEBUG] Bắt đầu xử lý Voice Chat (PhoWhisper)...")
+        t0 = time.perf_counter()
+        transcript = self.asr.transcribe_file(audio_path)
+        asr_ms = (time.perf_counter() - t0) * 1000.0
+        print(f"[LATENCY] pho_whisper_asr={asr_ms:.0f}ms transcript='{transcript[:80]}'")
 
         self._write_input_sidecars(
             audio_path,
@@ -464,24 +478,20 @@ class LumiMvpPipeline:
             channel="voice",
             status="transcribed",
             owner_name=owner_name,
-            speaker_info=speaker_info,
         )
         print(f"[DEBUG] Kết quả ASR: '{transcript}'")
-        # Loại bỏ các ảo giác thông dụng của Whisper nếu ở trong môi trường ồn
-        for h in VOICE_ASR_HALLUCINATIONS:
-            if h.lower() in transcript.lower():
-                reason = f"Nhiễu ảo giác ASR: {transcript}"
-                print(f"[DEBUG] Bỏ qua vì dính ASR ảo giác: {transcript}")
-                self._write_input_sidecars(
-                    audio_path,
-                    transcript,
-                    channel="voice",
-                    status="ignored",
-                    reason=reason,
-                    owner_name=owner_name,
-                    speaker_info=speaker_info,
-                )
-                return {"status": "ignored", "input_text": transcript, "reason": reason}
+        if self._is_whisper_hallucination(transcript):
+            reason = f"Nhiễu ảo giác ASR: {transcript}"
+            print(f"[DEBUG] Bỏ qua vì dính ASR ảo giác: {transcript}")
+            self._write_input_sidecars(
+                audio_path,
+                transcript,
+                channel="voice",
+                status="ignored",
+                reason=reason,
+                owner_name=owner_name,
+            )
+            return {"status": "ignored", "input_text": transcript, "reason": reason}
 
         print("[DEBUG] Chuyển kết quả ASR sang pipeline Voice Chat...")
         voice_user_pronoun = user_pronoun or owner_name
@@ -508,6 +518,7 @@ class LumiMvpPipeline:
         user_pronoun: str | None = None,
     ) -> MvpPipelineResult | dict:
         clean_text = text.strip()
+        timer = LatencyTimer("voice_transcript")
         print(f"\n[DEBUG] Pipeline Voice xử lý Text: '{clean_text}'")
         if self._looks_like_voice_noise(clean_text):
             print("[DEBUG] Bỏ qua voice transcript vì giống tiếng đệm/nhiễu.")
@@ -517,22 +528,30 @@ class LumiMvpPipeline:
             print("[DEBUG] Bỏ qua voice transcript vì giống echo câu trả lời của Lumi.")
             return {"status": "ignored", "input_text": clean_text, "reason": "Có vẻ là tiếng phản hồi của Lumi bị micro thu lại."}
 
+        if self._is_whisper_hallucination(clean_text) and self.voice_buffer:
+            print(f"[DEBUG] Bỏ qua ASR ảo giác, giữ buffer user: '{clean_text[:80]}'")
+            return {
+                "status": "ignored",
+                "input_text": clean_text,
+                "reason": "Ảo giác PhoWhisper — không ghi đè câu Web Speech đang chờ.",
+            }
+
         stop_response = self._stop_response_for_intent(clean_text)
         if stop_response:
             self._apply_stop_intent()
-            tts_result = self.tts.synthesize_text(stop_response)
             self._remember(clean_text, stop_response)
-            result = MvpPipelineResult(
-                input_text=clean_text,
-                response_text=stop_response,
-                audio_path=tts_result.audio_path,
-                tts_engine=tts_result.engine,
-            )
-            self._write_response_sidecars(result, channel="voice")
-            return result
+            tts_result = self.tts.synthesize_text(stop_response)
+            print(f"[LATENCY] voice_stop TTS text='{clean_text}'")
+            return {
+                "status": "stopped",
+                "input_text": clean_text,
+                "response_text": stop_response,
+                "audio_path": str(tts_result.audio_path),
+                "tts_engine": tts_result.engine,
+            }
 
         addressee_decision = self.voice_addressee_detector.detect(clean_text, self.history)
-        if not addressee_decision.addressed and addressee_decision.confidence > 0.8:
+        if not addressee_decision.addressed and addressee_decision.confidence > 0.85:
             print(f"[DEBUG] Không nói chuyện với Lumi: {addressee_decision.reason}")
             return {"status": "ignored", "input_text": clean_text, "reason": addressee_decision.reason}
 
@@ -545,10 +564,8 @@ class LumiMvpPipeline:
         if self.turn_detector:
             print("[DEBUG] Kiểm tra Turn-taking để tính thời gian chờ voice...")
             segment = TranscriptSegment(text=combined_text)
-            t0 = time.time()
             turn_decision = self.turn_detector.decide(segment, speech_gap_seconds=1.0)
-            t1 = time.time()
-            print(f"[DEBUG] Thời gian Turn-taking LLM: {t1 - t0:.2f}s")
+            timer.mark("turn_taking")
             reason = turn_decision.reason
             is_complete = turn_decision.is_complete
             if turn_decision.is_complete:
@@ -560,6 +577,15 @@ class LumiMvpPipeline:
                 wait_ms = max(1400, turn_decision.wait_ms)
                 print(f"[DEBUG] Người dùng có thể chưa nói xong: {turn_decision.reason}")
 
+        timer.log(
+            {
+                "stt_source": "web_speech",
+                "input": clean_text[:80],
+                "wait_ms": wait_ms,
+                "is_complete": is_complete,
+            }
+        )
+
         return {
             "status": "buffered",
             "input_text": clean_text,
@@ -568,6 +594,40 @@ class LumiMvpPipeline:
             "wait_ms": wait_ms,
             "is_complete": is_complete,
         }
+
+    def _is_whisper_hallucination(self, text: str) -> bool:
+        lowered = text.lower()
+        normalized = self._normalized_match_text(text)
+        if any(h.lower() in lowered for h in VOICE_ASR_HALLUCINATIONS):
+            return True
+        if "thay the" in normalized and "chat luong" in normalized:
+            return True
+        if "tang truong" in normalized and len(normalized.split()) >= 5:
+            return True
+        if lowered.startswith("day la mot trong nhung"):
+            return True
+        return False
+
+    def _looks_like_garbled_transcript(self, text: str) -> bool:
+        """Heuristic: Web Speech đôi khi lặp từ/cụm vô nghĩa — không nên kích hoạt safety template."""
+        normalized = self._normalized_match_text(text)
+        tokens = normalized.split()
+        if len(tokens) < 6:
+            return False
+
+        unique_ratio = len(set(tokens)) / len(tokens)
+        if unique_ratio < 0.5:
+            return True
+
+        if len(tokens) >= 8:
+            bigrams = [" ".join(tokens[i : i + 2]) for i in range(len(tokens) - 1)]
+            counts: dict[str, int] = {}
+            for bigram in bigrams:
+                counts[bigram] = counts.get(bigram, 0) + 1
+            if counts and max(counts.values()) >= 3:
+                return True
+
+        return False
 
     def _looks_like_voice_noise(self, text: str) -> bool:
         normalized = _normalize(text)
@@ -755,6 +815,10 @@ class LumiMvpPipeline:
         if not normalized:
             return None
 
+        if self._looks_like_garbled_transcript(user_text):
+            print(f"[DEBUG] Bỏ qua direct response (ASR có vẻ lỗi/nhiễu): '{user_text[:100]}'")
+            return None
+
         stop_response = self._stop_response_for_normalized_text(normalized)
         if stop_response:
             self._apply_stop_intent()
@@ -823,9 +887,17 @@ class LumiMvpPipeline:
         return self._stop_response_for_normalized_text(self._normalized_match_text(text))
 
     def _stop_response_for_normalized_text(self, normalized: str) -> str | None:
+        tokens = normalized.split()
         for terms, response in STOP_RESPONSE_TERMS:
-            if self._contains_any_term(normalized, terms):
-                return response
+            for term in terms:
+                normalized_term = self._normalized_match_text(term)
+                if not normalized_term:
+                    continue
+                if normalized_term in STOP_SINGLE_WORD_TERMS:
+                    if tokens == [normalized_term]:
+                        return response
+                elif self._contains_term(normalized, term):
+                    return response
         return None
 
     def _apply_stop_intent(self) -> None:
@@ -1068,7 +1140,6 @@ class LumiMvpPipeline:
                 "speaker_info": speaker_info,
                 "asr_provider": self.config.asr_provider,
                 "asr_model": self.config.asr_model,
-                "speaker_model": self.config.speaker_model,
             },
         )
 
@@ -1085,6 +1156,31 @@ class LumiMvpPipeline:
         self.history.append({"role": "assistant", "content": "Xin chào, Lumi đây. Bạn cần Lumi giúp gì không?"})
         self.user_buffer.clear()
         self.voice_buffer.clear()
+
+
+def _audio_mime_for_path(audio_path: Path) -> str:
+    suffix = audio_path.suffix.lower()
+    if suffix == ".mp3":
+        return "audio/mpeg"
+    if suffix == ".ogg":
+        return "audio/ogg"
+    return "audio/wav"
+
+
+def _latency_bottleneck_hint(timer: LatencyTimer, tts_total_ms: float) -> str:
+    stages = timer.stages
+    llm_ms = stages.get("llm_generation", 0.0) + stages.get("llm_first_token", 0.0)
+    lock_ms = stages.get("generation_lock_wait", 0.0)
+    first_tts_ms = stages.get("first_tts", 0.0)
+    if tts_total_ms > llm_ms and tts_total_ms > lock_ms:
+        return "tts_chunked (TTS chunk đầu chậm hơn LLM)"
+    if llm_ms > lock_ms and llm_ms > tts_total_ms:
+        return "llm_generation (Qwen trên GPU — không phải mạng localhost)"
+    if lock_ms > 500:
+        return "generation_lock_wait (luồng cũ chưa dừng)"
+    if first_tts_ms > 2000:
+        return "first_tts_slow (TTS chunk đầu)"
+    return "mixed_or_buffer_wait (xem frontend buffer_ms)"
 
 
 def _build_asr(config: LumiConfig):

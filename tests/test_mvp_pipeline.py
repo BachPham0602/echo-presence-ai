@@ -1,7 +1,7 @@
 import unittest
 
 from lumi.config import LumiConfig
-from lumi.models import AddresseeDecision, SpeakerDecision, TTSResult, TurnDecision
+from lumi.models import AddresseeDecision, TTSResult, TurnDecision
 from lumi.mvp_pipeline import LumiMvpPipeline
 
 
@@ -82,11 +82,6 @@ class RejectingAddresseeDetector:
         return AddresseeDecision(False, 1.0, "test rejects everything")
 
 
-class FakeSpeakerVerifier:
-    def verify(self, segment):
-        return SpeakerDecision("owner", True, 1.0, "test speaker")
-
-
 class FakeTTS:
     def synthesize_text(self, text):
         return TTSResult(audio_path="outputs/fake.wav", sample_rate=48000, engine="fake-tts")
@@ -133,7 +128,6 @@ class LumiMvpPipelineTest(unittest.TestCase):
             tts=FakeTTS(),
             turn_detector=sentinel,
             addressee_detector=sentinel,
-            speaker_verifier=sentinel,
             emotion_classifier=sentinel,
         )
 
@@ -142,7 +136,6 @@ class LumiMvpPipelineTest(unittest.TestCase):
         self.assertEqual(result.response_text, "Phản hồi cho: tôi cần hỗ trợ")
         self.assertIs(pipeline.turn_detector, sentinel)
         self.assertIs(pipeline.addressee_detector, sentinel)
-        self.assertIs(pipeline.speaker_verifier, sentinel)
         self.assertIs(pipeline.emotion_classifier, sentinel)
 
     def test_text_chat_buffers_until_flush_even_if_addressee_classifier_rejects(self):
@@ -217,7 +210,6 @@ class LumiMvpPipelineTest(unittest.TestCase):
             response_generator=FakeResponseGenerator(),
             tts=FakeTTS(),
             turn_detector=CompleteTurnDetector(),
-            speaker_verifier=FakeSpeakerVerifier(),
         )
 
         first = pipeline.handle_voice_transcript("Lumi ơi hôm nay mình mệt")
@@ -236,7 +228,6 @@ class LumiMvpPipelineTest(unittest.TestCase):
             response_generator=FakeResponseGenerator(),
             tts=FakeTTS(),
             turn_detector=VoicePartWaitsTurnDetector(),
-            speaker_verifier=FakeSpeakerVerifier(),
         )
 
         voice_result = pipeline.handle_voice_transcript("voice part")
@@ -257,7 +248,6 @@ class LumiMvpPipelineTest(unittest.TestCase):
             response_generator=FakeResponseGenerator(),
             tts=FakeTTS(),
             turn_detector=CompleteTurnDetector(),
-            speaker_verifier=FakeSpeakerVerifier(),
         )
 
         result = pipeline.handle_voice_transcript("ừm")
@@ -270,7 +260,6 @@ class LumiMvpPipelineTest(unittest.TestCase):
             response_generator=FakeResponseGenerator(),
             tts=FakeTTS(),
             turn_detector=CompleteTurnDetector(),
-            speaker_verifier=FakeSpeakerVerifier(),
         )
         pipeline._remember("ngủ sớm được không", "Lumi nghĩ bạn nên ngủ sớm tối nay nhé")
 
@@ -311,6 +300,17 @@ class LumiMvpPipelineTest(unittest.TestCase):
         self.assertEqual(generator.calls, [])
         self.assertTrue(pipeline.interrupt_event.is_set())
 
+    def test_stop_intent_does_not_match_name_huy_in_longer_phrase(self):
+        pipeline = LumiMvpPipeline(
+            config=LumiConfig(response_provider="template", tts_provider="no-audio"),
+            response_generator=FakeResponseGenerator(),
+            tts=FakeTTS(),
+        )
+
+        self.assertIsNone(pipeline._stop_response_for_intent("trào lưu Huy"))
+        self.assertIsNone(pipeline._stop_response_for_intent("trào lưu Huy cái gì vậy luôn đi"))
+        self.assertEqual(pipeline._stop_response_for_intent("huy"), "Lumi dừng lại")
+
     def test_stop_intent_clears_pending_text_and_voice_buffers(self):
         pipeline = LumiMvpPipeline(
             config=LumiConfig(response_provider="template", tts_provider="no-audio"),
@@ -332,7 +332,6 @@ class LumiMvpPipelineTest(unittest.TestCase):
             response_generator=FakeResponseGenerator(),
             tts=FakeTTS(),
             turn_detector=CompleteTurnDetector(),
-            speaker_verifier=FakeSpeakerVerifier(),
         )
 
         result = pipeline.handle_voice_transcript("Lumi đề xuất món ăn cho tôi")
@@ -491,6 +490,24 @@ class LumiMvpPipelineTest(unittest.TestCase):
         pipeline.flush_chat()
 
         self.assertGreater(len(generator.calls[-1]["history"]), 0)
+
+    def test_garbled_asr_does_not_trigger_crisis_template(self):
+        generator = StreamingResponseGenerator(["Dạ, bạn nói lại giúp Lumi được không?"])
+        pipeline = LumiMvpPipeline(
+            config=LumiConfig(response_provider="template", tts_provider="no-audio"),
+            response_generator=generator,
+            tts=FakeTTS(),
+        )
+        garbled = (
+            "n chao toi tu thu den thu ve chong roi toi tu thu den chong roi toi tu tu tu nga"
+        )
+        pipeline.voice_buffer.append(garbled)
+
+        chunks = list(pipeline.flush_voice_chat_stream())
+        text = "".join(c.get("text_chunk", "") for c in chunks if c.get("text_chunk"))
+
+        self.assertNotIn("làm hại bản thân", text.lower())
+        self.assertNotIn("số khẩn cấp", text.lower())
 
 
 if __name__ == "__main__":

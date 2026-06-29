@@ -7,8 +7,11 @@ src/lumi/errors.py
 src/lumi/models.py
 src/lumi/mvp_cli.py
 src/lumi/mvp_pipeline.py
+src/lumi/output_metadata.py
 src/lumi/pipeline.py
+src/lumi/prefetch_models.py
 src/lumi/prompts.py
+src/lumi/web_app.py
 src/lumi/providers/__init__.py
 src/lumi/providers/addressee.py
 src/lumi/providers/asr.py
@@ -25,5 +28,11 @@ src/lumi_companion.egg-info/entry_points.txt
 src/lumi_companion.egg-info/requires.txt
 src/lumi_companion.egg-info/top_level.txt
 tests/test_mvp_pipeline.py
+tests/test_output_metadata.py
+tests/test_output_paths.py
 tests/test_pipeline.py
+tests/test_prompts.py
+tests/test_speaker_profiles.py
 tests/test_streaming.py
+tests/test_tts_module.py
+tests/test_web_sessions.py
