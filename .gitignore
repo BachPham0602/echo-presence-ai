@@ -17,3 +17,10 @@ models/
 # Large / generated
 owner_reference.wav
 tmpdir/
+
+# User voices & local audio files
+owner_voices/
+*.wav
+
+# IDE / local configs
+pyrightconfig.json
