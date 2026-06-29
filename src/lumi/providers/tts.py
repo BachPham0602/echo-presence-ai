@@ -75,6 +75,8 @@ class VieNeuTTS(BaseTTSProvider):
 
     def synthesize_text(self, text: str) -> TTSResult:
         engine = self._load_engine()
+        if engine is None:
+            raise RuntimeError("VieNeuTTS engine failed to initialize.")
         output_dir = _ensure_writable_dir(self.config.output_path)
         audio_path = output_dir / f"lumi_{time_ns()}.wav"
 
@@ -110,9 +112,20 @@ class VieNeuTTS(BaseTTSProvider):
             ) from exc
 
         if self.config.tts_mode:
-            self._engine = Vieneu(mode=self.config.tts_mode)
+            try:
+                self._engine = Vieneu(mode=self.config.tts_mode)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Không thể khởi tạo vieneu với mode '{self.config.tts_mode}': {exc}"
+                ) from exc
+            if self._engine is None:
+                raise ValueError(
+                    f"VieNeuTTS mode '{self.config.tts_mode}' không được hỗ trợ bởi vieneu SDK."
+                )
         else:
             self._engine = Vieneu()
+            if self._engine is None:
+                raise ValueError("Không thể khởi tạo vieneu với mode mặc định.")
         return self._engine
 
 
@@ -243,15 +256,15 @@ class ZipVoiceTTS(BaseTTSProvider):
         return chosen
 
     def _resolve_reference_speaker_name(self) -> str:
-        explicit = (self.config.tts_reference_speaker or '').strip()
-        if explicit:
-            return explicit
-
         owner_name = (self.config.owner_name or '').strip()
         if owner_name:
             owner_dir = Path(self.config.owner_voice_dir).expanduser() / owner_name
             if self._reference_files(owner_dir):
                 return owner_name
+
+        explicit = (self.config.tts_reference_speaker or '').strip()
+        if explicit:
+            return explicit
 
         profiles = self._available_reference_profiles()
         if len(profiles) == 1:

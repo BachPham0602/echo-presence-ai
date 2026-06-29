@@ -1,11 +1,53 @@
 from __future__ import annotations
 
-if __package__ in {None, ""}:
-    import sys
-    from pathlib import Path
+import sys
+from pathlib import Path
 
-    #sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "ViZipvoice"))
+# Add ViZipvoice directory to python path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "ViZipvoice"))
+
+# Monkey patch torchaudio.load to use soundfile instead of torchcodec
+try:
+    import torchaudio
+    import soundfile as sf
+    import torch
+    import os
+
+    def _custom_torchaudio_load(uri, frame_offset=0, num_frames=-1, normalize=True, channels_first=True, format=None, buffer_size=4096, backend=None):
+        if hasattr(uri, "read") or hasattr(uri, "seek"):
+            data, samplerate = sf.read(uri, dtype='float32', always_2d=True)
+        else:
+            data, samplerate = sf.read(str(uri), dtype='float32', always_2d=True)
+        
+        tensor = torch.from_numpy(data)
+        if channels_first:
+            tensor = tensor.t()
+        
+        if frame_offset > 0 or num_frames != -1:
+            time_axis = 1 if channels_first else 0
+            total_frames = tensor.shape[time_axis]
+            start = min(frame_offset, total_frames)
+            end = total_frames if num_frames == -1 else min(start + num_frames, total_frames)
+            if channels_first:
+                tensor = tensor[:, start:end]
+            else:
+                tensor = tensor[start:end, :]
+        return tensor, samplerate
+
+    def _custom_torchaudio_save(uri, src, sample_rate, channels_first=True, format=None, encoding=None, bits_per_sample=None, buffer_size=4096, backend=None):
+        arr = src.detach().cpu().numpy()
+        if channels_first:
+            arr = arr.T
+        if hasattr(uri, "write") or hasattr(uri, "seek"):
+            sf.write(uri, arr, sample_rate, format=format)
+        else:
+            sf.write(str(uri), arr, sample_rate, format=format)
+
+    torchaudio.load = _custom_torchaudio_load
+    torchaudio.save = _custom_torchaudio_save
+    print("[torchaudio] Monkey-patched torchaudio.load and save with soundfile successfully.")
+except Exception as e:
+    print(f"[torchaudio] Failed to monkey-patch torchaudio: {e}")
 
 import argparse
 import json
@@ -142,6 +184,8 @@ class LumiWebHandler(BaseHTTPRequestHandler):
                 self._handle_voice_text()
             elif path == "/api/owner_voice_sample":
                 self._handle_owner_voice_sample()
+            elif path == "/api/delete_voices":
+                self._handle_delete_voices()
             elif path == "/api/flush":
                 self._handle_flush()
             elif path == "/api/voice_stream":
@@ -198,10 +242,12 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         text = str(payload.get("text", "")).strip()
         bot_pronoun = payload.get("bot_pronoun")
         user_pronoun = payload.get("user_pronoun")
+        owner_name = payload.get("owner_name")
         if not text:
             self._send_json({"error": "Text rỗng."}, HTTPStatus.BAD_REQUEST)
             return
         session = self._session_for_payload(payload)
+        self._update_owner_voice(session, owner_name)
         with session.lock:
             result = session.pipeline.handle_text(text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
         self._send_json(_payload_from_result(result, self.config.output_root_path))
@@ -211,10 +257,12 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         text = str(payload.get("text", "")).strip()
         bot_pronoun = payload.get("bot_pronoun")
         user_pronoun = payload.get("user_pronoun")
+        owner_name = payload.get("owner_name")
         if not text:
             self._send_json({"error": "Text rỗng."}, HTTPStatus.BAD_REQUEST)
             return
         session = self._session_for_payload(payload)
+        self._update_owner_voice(session, owner_name)
         with session.lock:
             result = session.pipeline.handle_chat(text, bot_pronoun=bot_pronoun, user_pronoun=user_pronoun)
         if isinstance(result, dict):
@@ -234,6 +282,7 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             return
         voice_user_pronoun = user_pronoun or owner_name
         session = self._session_for_payload(payload)
+        self._update_owner_voice(session, payload.get("owner_name"))
         print(f"[DEBUG] /api/voice_text đang chờ session.lock...")
         with session.lock:
             result = session.pipeline.handle_voice_transcript(
@@ -265,6 +314,7 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         payload = self._read_json()
         bot_pronoun = payload.get("bot_pronoun")
         user_pronoun = payload.get("user_pronoun")
+        owner_name = payload.get("owner_name")
         
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -274,6 +324,7 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         
         # Do not hold the session lock for the whole stream, otherwise it blocks /api/interrupt.
         session = self._session_for_payload(payload)
+        self._update_owner_voice(session, owner_name)
         generator = session.pipeline.flush_voice_chat_stream(bot_pronoun=bot_pronoun, user_pronoun=user_pronoun, is_timeout=True)
         
         try:
@@ -361,6 +412,7 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             print(f"Lỗi đọc RMS: {e}")
 
         session = self._session_for_payload()
+        self._update_owner_voice(session, owner_name)
         with session.lock:
             result = session.pipeline.handle_voice_chat(
                 audio_path,
@@ -396,6 +448,16 @@ class LumiWebHandler(BaseHTTPRequestHandler):
         owner_dir.mkdir(parents=True, exist_ok=True)
         audio_path = owner_dir / f"{sample_index:02d}_{time_ns()}.wav"
         audio_path.write_bytes(self.rfile.read(length))
+
+        sample_text = unquote(self.headers.get("X-Sample-Text", "")).strip()
+        if sample_text:
+            try:
+                text_path = audio_path.with_suffix(".txt")
+                text_path.write_text(sample_text, encoding="utf-8")
+                print(f"[web] Đã ghi file transcript: {text_path.name} -> '{sample_text}'")
+            except Exception as e:
+                print(f"[ERROR] Không ghi được file transcript: {e}")
+
         sample_count = len(list_speaker_profiles(self.config.owner_voice_path))
         saved_samples = len([path for path in owner_dir.iterdir() if path.is_file() and path.suffix.lower() == ".wav"])
         self._send_json({
@@ -405,6 +467,50 @@ class LumiWebHandler(BaseHTTPRequestHandler):
             "sample_count": saved_samples,
             "profile_count": sample_count,
         })
+
+    def _handle_delete_voices(self) -> None:
+        import shutil
+        payload = self._read_json()
+        voice_names = payload.get("voices", [])
+        if not isinstance(voice_names, list):
+            self._send_json({"error": "Danh sách giọng nói không hợp lệ."}, HTTPStatus.BAD_REQUEST)
+            return
+
+        deleted = []
+        errors = []
+        for name in voice_names:
+            name = str(name).strip()
+            if not name or not _is_safe_owner_name(name):
+                errors.append(f"Tên '{name}' không hợp lệ.")
+                continue
+
+            owner_dir = self.config.owner_voice_path / name
+            if owner_dir.exists() and owner_dir.is_dir():
+                try:
+                    shutil.rmtree(owner_dir)
+                    deleted.append(name)
+                except Exception as e:
+                    errors.append(f"Không thể xóa '{name}': {str(e)}")
+            else:
+                errors.append(f"Không tìm thấy giọng '{name}'.")
+
+        self._send_json({
+            "status": "done",
+            "deleted": deleted,
+            "errors": errors,
+        })
+
+    def _update_owner_voice(self, session: LumiSessionState, owner_name: str | None) -> None:
+        if not owner_name:
+            return
+        owner_name = owner_name.strip()
+        if not _is_safe_owner_name(owner_name):
+            return
+        if session.pipeline.config.owner_name != owner_name:
+            print(f"[web] Cập nhật giọng nói Lumi của session: {session.pipeline.config.owner_name} -> {owner_name}")
+            object.__setattr__(session.pipeline.config, "owner_name", owner_name)
+            if hasattr(session.pipeline.tts, "_prompt_cache"):
+                session.pipeline.tts._prompt_cache = None
 
     def _read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))

@@ -232,6 +232,7 @@ export async function flushVoiceTurnStream(
     body: JSON.stringify({
       bot_pronoun: "Lumi",
       user_pronoun: "bạn",
+      owner_name: getSelectedVoice(),
       session_id: sessionId,
     }),
   });

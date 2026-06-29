@@ -69,3 +69,54 @@ export async function fetchAvailableVoices(): Promise<VoicesResult> {
     error: "Không kết nối được backend giọng nói — đang dùng danh sách mặc định.",
   };
 }
+
+export async function uploadOwnerVoiceSample(
+  name: string,
+  audioBlob: Blob,
+  sampleIndex = 1,
+  sampleText = ""
+): Promise<{ status: string; error?: string }> {
+  const base = import.meta.env.VITE_LUMI_API_BASE ?? "";
+  try {
+    const res = await fetch(`${base}/api/owner_voice_sample`, {
+      method: "POST",
+      headers: {
+        "X-Owner-Name": encodeURIComponent(name),
+        "X-Sample-Index": String(sampleIndex),
+        "X-Sample-Text": encodeURIComponent(sampleText),
+        "Content-Type": "audio/wav",
+      },
+      body: audioBlob,
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { status: "error", error: errData.error || `Lỗi server: ${res.statusText}` };
+    }
+    return (await res.json()) as { status: string; error?: string };
+  } catch (err: any) {
+    return { status: "error", error: err.message || "Không thể kết nối tới máy chủ" };
+  }
+}
+
+export async function deleteOwnerVoices(
+  voices: string[]
+): Promise<{ status: string; deleted?: string[]; errors?: string[]; error?: string }> {
+  const base = import.meta.env.VITE_LUMI_API_BASE ?? "";
+  try {
+    const res = await fetch(`${base}/api/delete_voices`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ voices }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { status: "error", error: errData.error || `Lỗi server: ${res.statusText}` };
+    }
+    return (await res.json()) as { status: string; deleted?: string[]; errors?: string[] };
+  } catch (err: any) {
+    return { status: "error", error: err.message || "Không thể kết nối tới máy chủ" };
+  }
+}
+

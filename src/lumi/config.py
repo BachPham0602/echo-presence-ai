@@ -45,7 +45,7 @@ class LumiConfig:
     output_dir: str = "outputs"
     output_subdir: str | None = None
     owner_voice_dir: str = "owner_voices"
-    cuda_visible_devices: str | None = "1"
+    cuda_visible_devices: str | None = "0"
 
     @classmethod
     def from_env(cls) -> "LumiConfig":
